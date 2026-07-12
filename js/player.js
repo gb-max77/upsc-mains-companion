@@ -17,20 +17,23 @@ export async function mountListen(root) {
     <div class="player-head">
       <select id="pl-doc"></select>
       <button class="btn sm" id="pl-mode" title="Narration mode">🎞 Flow</button>
+      <button class="btn sm" id="pl-allthemes" title="All themes — every subject">☰ All</button>
     </div>
     <div id="tdots"></div>
     <div id="reader"><div class="empty">Loading…</div></div>
     <div id="pbar">
       <div class="prog"><i id="pl-prog"></i></div>
       <div class="ctr">
-        <button class="pb wide" id="pl-themes" title="Jump to theme">☰</button>
-        <button class="pb wide" id="pl-speed">1×</button>
-        <button class="pb" id="pl-prevth" title="Previous theme">⏮</button>
-        <button class="pb" id="pl-prev">⬅︎</button>
-        <button class="pb play" id="pl-play">▶</button>
-        <button class="pb" id="pl-next">➡︎</button>
-        <button class="pb" id="pl-nextth" title="Next theme">⏭</button>
-        <button class="pb wide" id="pl-voice">🎙</button>
+        <button class="pb-corner" id="pl-themes" title="Themes in this document">☰<b>Themes</b></button>
+        <div class="ctr-center">
+          <button class="pb wide" id="pl-speed">1×</button>
+          <button class="pb" id="pl-prevth" title="Previous theme">⏮</button>
+          <button class="pb" id="pl-prev">⬅︎</button>
+          <button class="pb play" id="pl-play">▶</button>
+          <button class="pb" id="pl-next">➡︎</button>
+          <button class="pb" id="pl-nextth" title="Next theme">⏭</button>
+          <button class="pb wide" id="pl-voice">🎙</button>
+        </div>
       </div>
       <div class="meta"><span class="nowline" id="pl-now"></span><span id="pl-pos"></span></div>
     </div>`;
@@ -44,7 +47,8 @@ export async function mountListen(root) {
   el.querySelector('#pl-prevth').onclick = () => jumpTheme(-1);
   el.querySelector('#pl-speed').onclick = showSpeedSheet;
   el.querySelector('#pl-voice').onclick = showVoiceSheet;
-  el.querySelector('#pl-themes').onclick = showThemesSheet;
+  el.querySelector('#pl-themes').onclick = showCurrentThemesSheet;
+  el.querySelector('#pl-allthemes').onclick = showAllThemesSheet;
 
   const reader = el.querySelector('#reader');
   let scrollPause;
@@ -297,7 +301,38 @@ function showVoiceSheet() {
   });
 }
 
-async function showThemesSheet() {
+// themes of ONLY the currently open document (left-corner pbar button)
+function showCurrentThemesSheet() {
+  if (!doc || !structure) return;
+  const ci = chunkOf(speech.idx);
+  const curStart = ci >= 0 && chunks[ci].theme ? chunks[ci].start : -1;
+  const parts = [];
+  let n = 0;
+  for (const s of structure.sections) {
+    const real = s.themes.filter(t => !t.pseudo);
+    if (!real.length) continue;
+    parts.push(`<div class="drawer-sec">${escapeHtml(cleanTitle(s.title) || s.title)}</div>`);
+    for (const t of real) {
+      n++;
+      const isCur = t.start === curStart;
+      parts.push(`<div class="drawer-item ${isCur ? 'cur' : ''}" data-i="${t.start}"><span class="n">${n}</span><span>${isCur ? '▶ ' : ''}${escapeHtml(cleanTitle(t.title))}</span></div>`);
+    }
+  }
+  sheet(`<h3>📖 ${escapeHtml(doc.title)}</h3>` + (parts.join('') || '<div class="empty">No themes detected in this document.</div>'), (root) => {
+    const cur = root.querySelector('.drawer-item.cur');
+    if (cur) cur.scrollIntoView({ block: 'center' });
+    root.querySelectorAll('.drawer-item').forEach(nEl => nEl.onclick = () => {
+      const i = +nEl.dataset.i;
+      closeSheet();
+      speech.seek(i);
+      speech.play();
+      markCurrent(i, true);
+    });
+  });
+}
+
+// themes across EVERY document (top player-head button)
+async function showAllThemesSheet() {
   const docs = await audioDocs();
   const parts = [];
   for (const d of docs) {

@@ -156,10 +156,21 @@ h2.vt{font-size:20px;font-weight:800;margin-bottom:4px}
 }
 #pbar .prog{height:3px;background:var(--bg3);border-radius:99px;overflow:hidden;margin-bottom:9px}
 #pbar .prog i{display:block;height:100%;background:var(--acc);width:0%}
-#pbar .ctr{display:flex;align-items:center;justify-content:center;gap:10px}
-.pb{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:19px;background:var(--bg3);border:1px solid var(--line)}
+#pbar .ctr{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ctr-center{display:flex;align-items:center;justify-content:center;gap:10px;flex:1;min-width:0}
+.pb{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:19px;background:var(--bg3);border:1px solid var(--line);flex:none}
 .pb.play{width:58px;height:58px;font-size:24px;background:var(--acc);color:#161000;border:none}
 .pb.wide{width:auto;border-radius:22px;padding:0 14px;font-size:12.5px;font-weight:800}
+
+/* distinct, bold left-corner "Themes" toggle — scoped to the current doc */
+.pb-corner{
+  flex:none;display:flex;align-items:center;gap:6px;
+  background:var(--acc);color:#161000;border:none;border-radius:13px;
+  padding:9px 12px;font-size:15px;line-height:1;
+}
+.pb-corner b{font-weight:800;font-size:13px;letter-spacing:.01em}
+.pb-corner:active{transform:scale(.95)}
+@media(max-width:400px){.pb-corner b{display:none}.pb-corner{padding:9px 10px}}
 #pbar .meta{display:flex;justify-content:space-between;font-size:11px;color:var(--tx3);margin-top:7px;gap:10px}
 #pbar .meta .nowline{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
