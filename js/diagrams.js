@@ -67,9 +67,10 @@ export function buildDiagramsForDoc(doc) {
         items.forEach((it, k) => blocks[k % blocks.length].content.push(it));
       }
 
+      // tables AND hub-spoke maps coexist — a theme can yield both
       const cmp = comparison(blocks);
       if (cmp) diagrams.push({ type: 'table', cols: cmp });
-      else for (const b of blocks) {
+      for (const b of blocks) {
         const km = keywordMap(b);
         if (km) diagrams.push({ type: 'map', head: b.head, items: km });
       }

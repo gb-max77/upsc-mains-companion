@@ -17,13 +17,13 @@ export async function mountListen(root) {
     <div class="player-head">
       <select id="pl-doc"></select>
       <button class="btn sm" id="pl-mode" title="Narration mode">🎞 Flow</button>
-      <button class="btn sm" id="pl-themes">☰ Themes</button>
     </div>
     <div id="tdots"></div>
     <div id="reader"><div class="empty">Loading…</div></div>
     <div id="pbar">
       <div class="prog"><i id="pl-prog"></i></div>
       <div class="ctr">
+        <button class="pb wide" id="pl-themes" title="Jump to theme">☰</button>
         <button class="pb wide" id="pl-speed">1×</button>
         <button class="pb" id="pl-prevth" title="Previous theme">⏮</button>
         <button class="pb" id="pl-prev">⬅︎</button>
@@ -166,6 +166,7 @@ function renderReader() {
     const t = e.target.closest('[data-idx]');
     if (!t) return;
     speech.seek(+t.dataset.idx);
+    speech.play(); // tap-to-jump always continues the narration from there
     markCurrent(+t.dataset.idx, true);
   };
 }
@@ -263,6 +264,7 @@ function jumpTheme(dir) {
   const cur = ths.findIndex(c => speech.idx >= c.start && speech.idx < c.end);
   const nxt = Math.max(0, Math.min(ths.length - 1, (cur < 0 ? 0 : cur + dir)));
   speech.seek(ths[nxt].start);
+  speech.play(); // theme jumps always continue narration seamlessly
   markCurrent(ths[nxt].start, true);
 }
 

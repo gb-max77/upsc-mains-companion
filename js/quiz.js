@@ -1,16 +1,23 @@
-// Feature C1 — active recall cloze quiz: years, Articles, cases, %s blanked out
+// Feature C1 — active recall cloze quiz.
+// Questions are 30+ word passages (the same keyword-flow chunks as flashcards)
+// with a MIX of blanks: keyword lead-ins, theories/committees/acts, case names,
+// thinker quotes, examples, Articles, data and years.
 import { DB } from './db.js';
-import { parseStructure, classifyLine, cleanTitle } from './parser.js';
 import { escapeHtml } from './ui.js';
+import { buildCardsForDoc } from './cards.js';
 
-// Each pattern is typed so a question mixes fact KINDS (a case + a year + a
-// committee) instead of three years. Order = blanking priority.
+// Each pattern is typed so a question mixes fact KINDS (a keyword + a case +
+// an example + a year) instead of four years. Order = blanking priority.
 const PATTERNS = [
+  // keyword lead-ins — the "write this" token that opens each point
+  { t: 'keyword', re: /(?:^|·\s+)([A-Z][^:·—]{2,42}?):\s/g, group: 1 },
   { t: 'case', re: /\b[A-Z][A-Za-z.'']+(?:\s[A-Z][A-Za-z.'']+){0,3}\s(?:v\.?|vs\.?)\s[A-Z][A-Za-z.'']+/g },
   // named entity right before "(year)": Kesavananda (1973), NFHS-5 (2021)…
   { t: 'name', re: /\b[A-Z][\w.''&-]+(?:\s[A-Z][\w.''&-]+){0,3}(?=\s*\((?:1[89]|20)\d{2}\))/g },
-  // institutional terms: X Committee / Commission / Doctrine / Act / Mission…
-  { t: 'term', re: /\b[A-Z][\w''-]+(?:\s(?:[A-Z][\w''-]+|of|the|and)){0,3}\s(?:Committee|Commission|Doctrine|Mission|Act|Bill|Policy|Model|Theory|Curve|Index|Report|Scheme|Yojana|Abhiyan|Convention|Protocol|Treaty|Agreement|Summit|Fund)\b/g },
+  // theories & institutions: X Committee / Doctrine / Act / Theory / Model…
+  { t: 'theory', re: /\b[A-Z][\w''-]+(?:\s(?:[A-Z][\w''-]+|of|the|and)){0,3}\s(?:Committee|Commission|Doctrine|Mission|Act|Bill|Policy|Model|Theory|Curve|Index|Report|Scheme|Yojana|Abhiyan|Convention|Protocol|Treaty|Agreement|Summit|Fund|Principle|Hypothesis)\b/g },
+  // examples — the proof that earns marks: blank what follows "Ex:"
+  { t: 'example', re: /\bEx:\s*([^·.;()]{4,60})/g, group: 1 },
   // thinker quotes: blank what was said
   { t: 'quote', re: /“([^”]{4,70})”/g, group: 1 },
   { t: 'article', re: /\bArts?\.?\s?\d+[A-Z]?(?:\(\w+\))?/g },
@@ -21,7 +28,7 @@ const PATTERNS = [
   { t: 'acronym', re: /\b[A-Z]{3,}(?:-[A-Z0-9]{1,4})?\b/g },
 ];
 
-let el, pool = [], round = [], qIdx = 0, score = { got: 0, missed: 0 }, filterDoc = 'all', docs = [];
+let el, pool = [], round = [], qIdx = 0, filterDoc = 'all', docs = [];
 
 const quizDocs = async () => (await DB.allDocs()).filter(d => !d.uses || d.uses.quiz !== false);
 
@@ -43,29 +50,26 @@ export async function mountQuiz(root) {
 export async function reloadQuiz() { if (el) { docs = await quizDocs(); renderChips(); await buildPool(); newRound(); } }
 
 function renderChips() {
-  const chips = el.querySelector('#qz-chips');
-  chips.innerHTML = [`<button class="chip ${filterDoc === 'all' ? 'on' : ''}" data-doc="all">All subjects</button>`]
-    .concat(docs.map(d => `<button class="chip ${filterDoc === d.id ? 'on' : ''}" data-doc="${d.id}">${escapeHtml(d.title.split('·').slice(-1)[0].trim())}</button>`)).join('');
-  chips.querySelectorAll('[data-doc]').forEach(c => c.onclick = async () => {
-    filterDoc = c.dataset.doc; renderChips(); await buildPool(); newRound();
-  });
+  const box = el.querySelector('#qz-chips');
+  box.innerHTML = `<select id="qz-doc" style="width:100%">
+    <option value="all" ${filterDoc === 'all' ? 'selected' : ''}>📚 All subjects</option>
+    ${docs.map(d => `<option value="${d.id}" ${filterDoc === d.id ? 'selected' : ''}>${escapeHtml(d.title)}</option>`).join('')}
+  </select>`;
+  box.querySelector('#qz-doc').onchange = async (e) => {
+    filterDoc = e.target.value; await buildPool(); newRound();
+  };
 }
 
 async function buildPool() {
+  // quiz on 30+ word keyword-flow passages (same chunks as flashcards) so a
+  // question carries the full point: keyword → mechanism → example
   pool = [];
   const use = filterDoc === 'all' ? docs : docs.filter(d => d.id === filterDoc);
   for (const d of use) {
-    const { sections } = parseStructure(d.lines);
-    for (const sec of sections) for (const th of sec.themes) {
-      for (let i = th.pseudo ? th.start : th.start + 1; i < th.end; i++) {
-        const line = d.lines[i];
-        const kind = classifyLine(line);
-        if (kind === 'h1' || kind === 'h2') continue;
-        const w = line.split(/\s+/).length;
-        if (w < 8 || w > 55) continue;
-        const matches = findMatches(line);
-        if (matches.length) pool.push({ line, matches, theme: cleanTitle(th.title), doc: d.title });
-      }
+    for (const card of buildCardsForDoc(d)) {
+      if (card.text.split(/\s+/).length < 30) continue;
+      const matches = findMatches(card.text);
+      if (matches.length >= 3) pool.push({ line: card.text, matches, theme: card.theme, doc: d.title });
     }
   }
 }
@@ -86,8 +90,10 @@ function findMatches(line) {
   return out.sort((a, b) => a.start - b.start);
 }
 
-// choose up to 3 blanks, preferring a MIX of fact kinds spread across the line
-function pickBlanks(matches) {
+// choose blanks preferring a MIX of fact kinds spread across the passage;
+// longer passages earn more blanks (4-6) so recall covers the whole point
+function pickBlanks(matches, text) {
+  const nMax = Math.max(3, Math.min(6, Math.round(text.split(/\s+/).length / 16)));
   const byType = new Map();
   for (const m of matches) {
     if (!byType.has(m.t)) byType.set(m.t, []);
@@ -95,12 +101,12 @@ function pickBlanks(matches) {
   }
   const picked = [];
   for (const [, arr] of byType) {           // one per kind first (insertion = priority order)
-    if (picked.length >= 3) break;
+    if (picked.length >= nMax) break;
     const c = arr[Math.floor(Math.random() * arr.length)];
     if (!picked.some(p => c.start < p.end && c.end > p.start)) picked.push(c);
   }
   for (const m of matches) {                 // then fill from anything left
-    if (picked.length >= 3) break;
+    if (picked.length >= nMax) break;
     if (!picked.some(p => m.start < p.end && m.end > p.start) && !picked.includes(m)) picked.push(m);
   }
   return picked.sort((a, b) => a.start - b.start);
@@ -112,7 +118,7 @@ function newRound() {
   for (let i = 0; i < 12 && src.length; i++) {
     const q = src.splice(Math.floor(Math.random() * src.length), 1)[0];
     // pick blanks ONCE so revisiting a question shows the same blanks
-    round.push({ ...q, blanks: pickBlanks(q.matches), state: null, revealed: new Set() });
+    round.push({ ...q, blanks: pickBlanks(q.matches, q.line), state: null, revealed: new Set() });
   }
   qIdx = 0;
   renderQ();

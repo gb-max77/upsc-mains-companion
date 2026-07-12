@@ -162,28 +162,48 @@ async function rebuild() {
 }
 
 // ---------- diagrams sub-view ----------
+let dgDocId = null;
+
 async function renderDiagramsView() {
   const { buildDiagramsForDoc, renderDiagram } = await import('./diagrams.js');
   const box = el.querySelector('#diagrams');
   const docs = (await DB.allDocs()).filter(d => !d.uses || d.uses.diagrams !== false);
-  const parts = [];
-  for (const d of docs) {
-    const groups = buildDiagramsForDoc(d);
-    if (!groups.length) continue;
-    const n = groups.reduce((a, g) => a + g.diagrams.length, 0);
-    parts.push(`<details class="dg-doc"><summary>📊 ${escapeHtml(d.title)} <span class="tiny muted">(${n} diagrams)</span></summary>
-      ${groups.map(g => `
-        <div class="dg-theme">
+  const withDiagrams = docs.map(d => ({ d, groups: buildDiagramsForDoc(d) })).filter(x => x.groups.length);
+  if (!withDiagrams.length) {
+    box.innerHTML = `<div class="empty">No diagram-able content detected yet. Upload notes with → chains, H1/H2 comparisons or keyword: bullets.</div>`;
+    return;
+  }
+  if (!withDiagrams.some(x => x.d.id === dgDocId)) dgDocId = withDiagrams[0].d.id;
+  const cur = withDiagrams.find(x => x.d.id === dgDocId);
+
+  box.innerHTML = `<div class="pad">
+    <select id="dg-sel" style="width:100%;margin-bottom:10px">
+      ${withDiagrams.map(x => {
+        const n = x.groups.reduce((a, g) => a + g.diagrams.length, 0);
+        return `<option value="${x.d.id}" ${x.d.id === dgDocId ? 'selected' : ''}>📊 ${escapeHtml(x.d.title)} (${n} diagrams)</option>`;
+      }).join('')}
+    </select>
+    <div class="chiprow" id="dg-nav" style="margin-bottom:12px">
+      ${cur.groups.map((g, i) => `<button class="chip" data-g="${i}">${escapeHtml(shortTheme(g.theme))}</button>`).join('')}
+    </div>
+    <div id="dg-body">
+      ${cur.groups.map((g, i) => `
+        <div class="dg-theme" id="dg-g-${i}">
           <div class="dg-theme-title">${escapeHtml(g.theme)}</div>
           ${g.diagrams.map(renderDiagram).join('')}
         </div>`).join('')}
-    </details>`);
-  }
-  box.innerHTML = `<div class="pad">
-    <p class="muted tiny" style="margin-bottom:10px">Hand-drawable visuals detected in your notes — arrow chains become flowcharts, H1/H2 columns become comparison tables, keyword bullets become maps. Replicate these in the exam for easy presentation marks.</p>
-    ${parts.join('') || '<div class="empty">No diagram-able content detected yet. Upload notes with → chains, H1/H2 comparisons or keyword: bullets.</div>'}
+    </div>
   </div>`;
+
+  box.querySelector('#dg-sel').onchange = async (e) => { dgDocId = e.target.value; await renderDiagramsView(); };
+  box.querySelectorAll('#dg-nav .chip').forEach(c => c.onclick = () => {
+    box.querySelectorAll('#dg-nav .chip').forEach(x => x.classList.toggle('on', x === c));
+    const target = box.querySelector('#dg-g-' + c.dataset.g);
+    if (target) box.scrollTo(0, target.getBoundingClientRect().top - box.getBoundingClientRect().top + box.scrollTop - 8);
+  });
 }
+
+function shortTheme(t) { return t.length > 34 ? t.slice(0, 33) + '…' : t; }
 
 function renderChips(docs) {
   const chips = el.querySelector('#cd-chips');

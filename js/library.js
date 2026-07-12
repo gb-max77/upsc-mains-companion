@@ -4,7 +4,7 @@ import { DB, uid } from './db.js';
 import { extractLines } from './extract.js';
 import { parseStructure } from './parser.js';
 import { sheet, closeSheet, toast, escapeHtml } from './ui.js';
-import { setApiKey, getApiKey } from './ai.js';
+import { setApiKey, getApiKey, setGeminiKey, getGeminiKey } from './ai.js';
 
 let el, onChange = () => {}, tab = 'notes';
 const collapsed = new Set(JSON.parse(localStorage.getItem('lib-collapsed') || '[]'));
@@ -30,19 +30,31 @@ export function suggestFolder(name) {
 
 const folderOf = d => d.folder || suggestFolder(d.title);
 
-async function render() {
-  const docs = await DB.allDocs();
-  const models = await DB.allModelDocs();
-  const isNotes = tab === 'notes';
+// category: 'audio' = flow-audio files (audiobook), 'full' = direct full notes
+// (cards / quiz / answer / diagrams). Explicit field wins; else infer.
+export function categoryOf(d) {
+  if (d.category) return d.category;
+  if (/audio|flow/i.test(d.title + ' ' + (d.filename || ''))) return 'audio';
+  if (d.uses && d.uses.audio !== false && d.uses.cards === false && d.uses.quiz === false) return 'audio';
+  return 'full';
+}
 
-  // group notes by folder
+function groupByFolder(items) {
   const folders = new Map();
-  for (const d of docs) {
+  for (const d of items) {
     const f = folderOf(d);
     if (!folders.has(f)) folders.set(f, []);
     folders.get(f).push(d);
   }
-  const folderNames = [...folders.keys()].sort();
+  return [...folders.keys()].sort().map(f => ({ name: f, items: folders.get(f) }));
+}
+
+async function render() {
+  const docs = await DB.allDocs();
+  const models = await DB.allModelDocs();
+  const isNotes = tab === 'notes';
+  const fullNotes = docs.filter(d => categoryOf(d) === 'full');
+  const audioFiles = docs.filter(d => categoryOf(d) === 'audio');
 
   el.innerHTML = `
     <div class="pad" style="display:flex;flex-direction:column;gap:12px">
@@ -60,7 +72,10 @@ async function render() {
         <div id="drop" data-kind="notes">➕ <b>Add notes</b> — tap to upload .docx / .pdf / .txt<br>
           <span class="tiny">You choose what each file becomes: audio · cards · quiz · answers · diagrams</span></div>
         ${docs.length === 0 ? `<button class="btn blue" id="lb-seed">⚡ Load my 8 UPSC 2026 cheat-sheets (starter pack)</button>` : ''}
-        ${folderNames.map(f => folderBlock(f, folders.get(f))).join('') || '<div class="empty">Library is empty.</div>'}
+        <div class="cat-head">📖 Full Notes <span class="tiny muted">cards · quiz · answers · diagrams</span></div>
+        ${groupByFolder(fullNotes).map(g => folderBlock(g.name, g.items)).join('') || '<div class="empty tiny" style="padding:10px">None yet.</div>'}
+        <div class="cat-head">🎙 Audio Files <span class="tiny muted">flow audiobooks</span></div>
+        ${groupByFolder(audioFiles).map(g => folderBlock('🎙 ' + g.name, g.items)).join('') || '<div class="empty tiny" style="padding:10px">None yet — upload flow-audio notes and pick "Audio file".</div>'}
       ` : `
         <p class="muted tiny">Model-answer compilations live here, separate from your notes. The ✍️ Answer drill searches them for the best-matching answer; they never appear in Listen, Cards or Quiz.</p>
         <div id="drop" data-kind="model">➕ <b>Add model answers</b> — .docx / .pdf / .txt</div>
@@ -166,37 +181,55 @@ async function intake(files, kind) {
 function showUploadOptions(pending) {
   return new Promise((resolve) => {
     const sug = suggestFolder(pending.title);
+    const sugCat = /audio|flow/i.test(pending.title + ' ' + pending.filename) ? 'audio' : 'full';
     sheet(`
       <h3>📥 ${escapeHtml(pending.title)}</h3>
+      <label class="tiny muted">What is this file?</label>
+      <div class="chiprow" style="margin:6px 0 12px">
+        <button class="chip ${sugCat === 'full' ? 'on' : ''}" data-cat="full">📖 Full notes — cards · quiz · answers · diagrams</button>
+        <button class="chip ${sugCat === 'audio' ? 'on' : ''}" data-cat="audio">🎙 Audio file — flow audiobook</button>
+      </div>
       <label class="tiny muted">Folder</label>
       <input id="up-folder" value="${escapeHtml(sug)}" style="width:100%;margin:6px 0 12px" list="up-folders">
       <datalist id="up-folders"><option>GS1</option><option>GS2</option><option>GS3</option><option>GS4</option><option>PubAd</option><option>Essay</option><option>General</option></datalist>
       <label class="tiny muted">Narration mode (Listen tab)</label>
       <div class="chiprow" style="margin:6px 0 12px">
-        <button class="chip" data-mode="verbatim">📜 Verbatim — word for word</button>
-        <button class="chip on" data-mode="flow">🎞 Flow — Intro → H1/H2/H3 → Way-fwd pack → Conclusion</button>
+        <button class="chip ${sugCat === 'audio' ? '' : 'on'}" data-mode="verbatim">📜 Verbatim</button>
+        <button class="chip ${sugCat === 'audio' ? 'on' : ''}" data-mode="flow">🎞 Flow — Intro → H1/H2/H3 → Way-fwd → Conclusion</button>
       </div>
       <label class="tiny muted">Generate from this document</label>
-      <div class="chiprow" style="margin:6px 0 16px;flex-wrap:wrap">
-        <button class="chip on" data-use="audio">🎧 Audio</button>
-        <button class="chip on" data-use="cards">🃏 Cards</button>
-        <button class="chip on" data-use="quiz">🧠 Quiz</button>
-        <button class="chip on" data-use="answer">✍️ Answer writing</button>
-        <button class="chip on" data-use="diagrams">📊 Diagrams</button>
-      </div>
+      <div class="chiprow" id="up-uses" style="margin:6px 0 16px;flex-wrap:wrap"></div>
       <div class="row"><div class="spacer"></div><button class="btn primary" id="up-save">Add to library</button></div>
     `, (root) => {
+      const USE_DEFS = [['audio', '🎧 Audio'], ['cards', '🃏 Cards'], ['quiz', '🧠 Quiz'], ['answer', '✍️ Answer writing'], ['diagrams', '📊 Diagrams']];
+      const applyCat = (cat) => {
+        // intelligent presets per your workflow — still editable
+        const preset = cat === 'audio'
+          ? { audio: true, cards: false, quiz: false, answer: false, diagrams: false }
+          : { audio: false, cards: true, quiz: true, answer: true, diagrams: true };
+        root.querySelector('#up-uses').innerHTML = USE_DEFS.map(([k, label]) =>
+          `<button class="chip ${preset[k] ? 'on' : ''}" data-use="${k}">${label}</button>`).join('');
+        root.querySelectorAll('[data-use]').forEach(c => c.onclick = () => c.classList.toggle('on'));
+        root.querySelectorAll('[data-mode]').forEach(x =>
+          x.classList.toggle('on', x.dataset.mode === (cat === 'audio' ? 'flow' : 'verbatim')));
+      };
+      applyCat(sugCat);
+      root.querySelectorAll('[data-cat]').forEach(c => c.onclick = () => {
+        root.querySelectorAll('[data-cat]').forEach(x => x.classList.toggle('on', x === c));
+        applyCat(c.dataset.cat);
+      });
       root.querySelectorAll('[data-mode]').forEach(c => c.onclick = () => {
         root.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('on'));
         c.classList.add('on');
       });
-      root.querySelectorAll('[data-use]').forEach(c => c.onclick = () => c.classList.toggle('on'));
       root.querySelector('#up-save').onclick = async () => {
         const uses = {};
         root.querySelectorAll('[data-use]').forEach(c => { uses[c.dataset.use] = c.classList.contains('on'); });
         const modeChip = root.querySelector('[data-mode].on');
+        const catChip = root.querySelector('[data-cat].on');
         await DB.putDoc({
           id: uid(), kind: 'notes',
+          category: catChip ? catChip.dataset.cat : 'full',
           title: pending.title, filename: pending.filename, createdAt: Date.now(),
           folder: root.querySelector('#up-folder').value.trim() || 'General',
           mode: modeChip ? modeChip.dataset.mode : 'verbatim',
@@ -219,6 +252,11 @@ function showDocOptions(d) {
     <label class="tiny muted">Title</label>
     <input id="op-title" value="${escapeHtml(d.title)}" style="width:100%;margin:6px 0 12px">
     ${d.kind === 'model' ? '' : `
+    <label class="tiny muted">Type</label>
+    <div class="chiprow" style="margin:6px 0 12px">
+      <button class="chip ${categoryOf(d) === 'full' ? 'on' : ''}" data-cat="full">📖 Full notes</button>
+      <button class="chip ${categoryOf(d) === 'audio' ? 'on' : ''}" data-cat="audio">🎙 Audio file</button>
+    </div>
     <label class="tiny muted">Folder</label>
     <input id="op-folder" value="${escapeHtml(folderOf(d))}" style="width:100%;margin:6px 0 12px" list="up-folders">
     <datalist id="up-folders"><option>GS1</option><option>GS2</option><option>GS3</option><option>GS4</option><option>PubAd</option><option>Essay</option><option>General</option></datalist>
@@ -242,9 +280,14 @@ function showDocOptions(d) {
       c.classList.add('on');
     });
     root.querySelectorAll('[data-use]').forEach(c => c.onclick = () => c.classList.toggle('on'));
+    root.querySelectorAll('[data-cat]').forEach(c => c.onclick = () => {
+      root.querySelectorAll('[data-cat]').forEach(x => x.classList.toggle('on', x === c));
+    });
     root.querySelector('#op-save').onclick = async () => {
       d.title = root.querySelector('#op-title').value.trim() || d.title;
       if (d.kind !== 'model') {
+        const cc = root.querySelector('[data-cat].on');
+        if (cc) d.category = cc.dataset.cat;
         d.folder = root.querySelector('#op-folder').value.trim() || 'General';
         const mc = root.querySelector('[data-mode].on');
         if (mc) d.mode = mc.dataset.mode;
@@ -325,17 +368,53 @@ function showEditor(doc) {
 function showSettings() {
   sheet(`
     <h3>⚙️ Settings</h3>
+    <label class="tiny muted">Display — pick what's easiest on your eyes for long sessions</label>
+    <div class="chiprow" id="st-theme" style="margin:6px 0 10px">
+      ${['midnight|🌙 Midnight', 'warm|🕯 Warm (night)', 'sepia|📖 Sepia (day)'].map(o => {
+        const [v, l] = o.split('|');
+        return `<button class="chip ${(localStorage.getItem('ui-theme') || 'midnight') === v ? 'on' : ''}" data-th="${v}">${l}</button>`;
+      }).join('')}
+    </div>
+    <label class="tiny muted">Reader text size</label>
+    <div class="chiprow" id="st-size" style="margin:6px 0 10px">
+      ${['s|A', 'm|A', 'l|A', 'xl|A'].map((o, i) => {
+        const [v] = o.split('|');
+        return `<button class="chip ${(localStorage.getItem('ui-rsize') || 'm') === v ? 'on' : ''}" data-sz="${v}" style="font-size:${11 + i * 2.5}px">A</button>`;
+      }).join('')}
+    </div>
+    <div class="chiprow" style="margin:6px 0 16px">
+      <button class="chip ${localStorage.getItem('break-reminder') !== 'off' ? 'on' : ''}" id="st-break">👀 20-20-20 break reminder (every 25 min)</button>
+    </div>
+    <label class="tiny muted">Gemini API key (enables ✨ AI model answers in the Answer drill)</label>
+    <input type="password" id="st-gkey" placeholder="AIza…" value="${escapeHtml(getGeminiKey())}" style="width:100%;margin:6px 0 4px">
+    <p class="muted tiny" style="margin-bottom:12px">Free: sign in at <b>aistudio.google.com/apikey</b> with your Google account → Create API key → paste here. Stored only in this browser.</p>
     <label class="tiny muted">Anthropic API key (optional — enables ✨ AI card polish)</label>
     <input type="password" id="st-key" placeholder="sk-ant-…" value="${escapeHtml(getApiKey())}" style="width:100%;margin:6px 0 4px">
-    <p class="muted tiny" style="margin-bottom:14px">Stored only in this browser. Get one at console.anthropic.com.</p>
+    <p class="muted tiny" style="margin-bottom:14px">Get one at console.anthropic.com. Stored only in this browser.</p>
     <p class="muted tiny" style="margin-bottom:14px">⌨️ Shortcuts: <b>Space</b> play/pause · <b>←/→</b> previous / next line</p>
     <div class="row">
       <button class="btn danger sm" id="st-reset">Reset all app data</button>
       <div class="spacer"></div>
       <button class="btn primary" id="st-save">Save</button>
     </div>`, (root) => {
+    root.querySelectorAll('#st-theme .chip').forEach(c => c.onclick = () => {
+      localStorage.setItem('ui-theme', c.dataset.th);
+      document.documentElement.dataset.theme = c.dataset.th;
+      root.querySelectorAll('#st-theme .chip').forEach(x => x.classList.toggle('on', x === c));
+    });
+    root.querySelectorAll('#st-size .chip').forEach(c => c.onclick = () => {
+      localStorage.setItem('ui-rsize', c.dataset.sz);
+      document.documentElement.dataset.rsize = c.dataset.sz;
+      root.querySelectorAll('#st-size .chip').forEach(x => x.classList.toggle('on', x === c));
+    });
+    root.querySelector('#st-break').onclick = () => {
+      const off = localStorage.getItem('break-reminder') === 'off';
+      localStorage.setItem('break-reminder', off ? 'on' : 'off');
+      root.querySelector('#st-break').classList.toggle('on', off);
+    };
     root.querySelector('#st-save').onclick = () => {
       setApiKey(root.querySelector('#st-key').value);
+      setGeminiKey(root.querySelector('#st-gkey').value);
       closeSheet();
       toast('Settings saved');
     };

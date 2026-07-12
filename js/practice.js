@@ -5,13 +5,15 @@
 import { DB } from './db.js';
 import { parseStructure, classifyLine, cleanTitle, decorateLine } from './parser.js';
 import { escapeHtml, sheet, closeSheet, toast } from './ui.js';
+import { geminiAvailable, callGemini, mainsAnswerPrompt } from './ai.js';
 
 // time and word limit are independent — you pick each
 const TIMES = [7.5, 9.5];                 // minutes
-const WORDS = [100, 150, 200, 250];       // word limits
+const WORDS = [150, 200, 250, 300];       // word limits
 
-let el, docs = [], current = null, timer = null, remaining = 0;
+let el, docs = [], current = null, currentQ = '', timer = null, remaining = 0, paused = false;
 let mins = 9.5, wordLimit = 250, qMode = 'questions'; // 'questions' | 'themes'
+let maSource = localStorage.getItem('ma-source') || 'notes'; // 'notes' | 'gemini' | 'both'
 
 const answerDocs = async () => (await DB.allDocs()).filter(d => !d.uses || d.uses.answer !== false);
 
@@ -74,6 +76,12 @@ function renderIdle() {
         <div class="chiprow" id="pr-words" style="margin-top:6px">
           ${WORDS.map(w => `<button class="chip ${w === wordLimit ? 'on' : ''}" data-w="${w}">${w} words</button>`).join('')}
         </div>
+        <label class="tiny muted" style="display:block;margin-top:12px">Model answer source</label>
+        <div class="chiprow" id="pr-src" style="margin-top:6px">
+          <button class="chip ${maSource === 'notes' ? 'on' : ''}" data-src="notes">📚 Notes only</button>
+          <button class="chip ${maSource === 'gemini' ? 'on' : ''}" data-src="gemini">✨ Just Gemini</button>
+          <button class="chip ${maSource === 'both' ? 'on' : ''}" data-src="both">🔗 Gemini + Notes</button>
+        </div>
         <div class="row" style="margin-top:16px">
           <button class="btn primary" id="pr-random">🎲 Random</button>
           <button class="btn" id="pr-pick">Pick</button>
@@ -95,6 +103,11 @@ function renderIdle() {
   el.querySelectorAll('#pr-words .chip').forEach(c => c.onclick = () => {
     wordLimit = +c.dataset.w;
     el.querySelectorAll('#pr-words .chip').forEach(x => x.classList.toggle('on', x === c));
+  });
+  el.querySelectorAll('#pr-src .chip').forEach(c => c.onclick = () => {
+    maSource = c.dataset.src;
+    localStorage.setItem('ma-source', maSource);
+    el.querySelectorAll('#pr-src .chip').forEach(x => x.classList.toggle('on', x === c));
   });
   el.querySelector('#pr-random').onclick = () => startRandom();
   el.querySelector('#pr-pick').onclick = () => pickTheme();
@@ -142,39 +155,65 @@ async function pickTheme() {
 
 function start(theme, questionText) {
   current = theme;
+  currentQ = questionText || `${cleanTitle(theme.title)} — discuss with recent examples.`;
   remaining = Math.round(mins * 60);
-  const qHtml = questionText
-    ? escapeHtml(questionText)
-    : `${escapeHtml(cleanTitle(theme.title))} — discuss with recent examples.`;
+  paused = false;
   el.innerHTML = `
     <div class="pad">
       <div class="qz-ctx">${escapeHtml(cleanTitle(theme.section) || theme.section || '')}</div>
-      <div class="pr-q">Q. ${qHtml} <span class="muted">(≈${wordLimit} words · ${mins} min)</span></div>
+      <div class="pr-q">Q. ${escapeHtml(currentQ)} <span class="muted">(≈${wordLimit} words · ${mins} min)</span></div>
       <div class="timer" id="pr-timer">${fmt(remaining)}</div>
-      <div class="row" style="justify-content:center;gap:10px;flex-wrap:wrap">
+      <div class="row" style="justify-content:center;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="pr-pause">⏸ Pause</button>
+        <button class="btn" id="pr-stop">⏹ Stop</button>
         <button class="btn danger" id="pr-quit">Quit</button>
+      </div>
+      <div class="row" style="justify-content:center;gap:10px;flex-wrap:wrap;margin-top:10px">
         <button class="btn" id="pr-reveal">Reveal structure</button>
         <button class="btn primary" id="pr-model">📄 Full model answer</button>
       </div>
-      <p class="muted tiny" style="text-align:center;margin-top:14px">Write on paper. Structure: Intro → H1/H2 → Way forward → Conclusion.</p>
+      <p class="muted tiny" style="text-align:center;margin-top:14px">Write on paper. Structure: Intro → H1/H2 → Way forward → Conclusion. Timer keeps running when you reveal.</p>
       <div id="pr-answer"></div>
       <div id="pr-model-out"></div>
     </div>`;
   el.querySelector('#pr-quit').onclick = renderIdle;
+  el.querySelector('#pr-pause').onclick = togglePause;
+  el.querySelector('#pr-stop').onclick = () => { stopTimer(); el.querySelector('#pr-pause').textContent = '▶ Restart'; paused = 'stopped'; };
   el.querySelector('#pr-reveal').onclick = revealStructure;
   el.querySelector('#pr-model').onclick = revealModel;
+  runTimer();
+}
+
+function runTimer() {
+  stopTimer();
   timer = setInterval(() => {
+    if (paused === true) return;
     remaining--;
     const t = el.querySelector('#pr-timer');
     if (!t) { stopTimer(); return; }
     t.textContent = fmt(Math.max(remaining, 0));
     if (remaining <= 60) t.classList.add('low');
-    if (remaining <= 0) { stopTimer(); revealStructure(); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); }
+    if (remaining <= 0) { stopTimer(); if (navigator.vibrate) navigator.vibrate([200, 100, 200]); }
   }, 1000);
 }
 
+function togglePause() {
+  const b = el.querySelector('#pr-pause');
+  if (paused === 'stopped') {           // restart from full time
+    remaining = Math.round(mins * 60);
+    paused = false;
+    el.querySelector('#pr-timer').classList.remove('low');
+    el.querySelector('#pr-timer').textContent = fmt(remaining);
+    b.textContent = '⏸ Pause';
+    runTimer();
+    return;
+  }
+  paused = !paused;
+  b.textContent = paused ? '▶ Resume' : '⏸ Pause';
+}
+
 function revealStructure() {
-  stopTimer();
+  // timer intentionally keeps running — self-check against the clock
   const box = el.querySelector('#pr-answer');
   if (!box || box.childElementCount) return;
   const doc = current.doc;
@@ -274,23 +313,59 @@ function renderUploadedModel(best, wordLimit) {
   return { html: parts.join(''), words: used, source: `from “${doc.title}”` };
 }
 
+function notesAnswer(limit) {
+  return findUploadedModel(current).then(best =>
+    best ? renderUploadedModel(best, limit) : synthesizeAnswer(current, limit));
+}
+
+// light formatting for Gemini plain-text output: heading lines end with ':'
+function formatAiAnswer(text) {
+  return text.split(/\n+/).map(l => {
+    const t = l.trim();
+    if (!t) return '';
+    if (/^[^.!?]{3,70}:$/.test(t)) return `<p class="ma-h">${escapeHtml(t.replace(/:$/, ''))}</p>`;
+    return `<p>${decorateLine(t.replace(/^[-–•*]\s*/, t.startsWith('-') ? '– ' : ''))}</p>`;
+  }).join('');
+}
+
+async function geminiAnswer(limit, withNotes) {
+  if (!geminiAvailable()) throw new Error('Add your Gemini API key in Library ▸ Settings (free at aistudio.google.com/apikey)');
+  let notesCtx = null;
+  if (withNotes) {
+    notesCtx = current.doc.lines.slice(current.start, current.end).join('\n').slice(0, 12000);
+  }
+  const text = await callGemini(mainsAnswerPrompt(currentQ, limit, notesCtx));
+  return {
+    html: formatAiAnswer(text),
+    words: text.split(/\s+/).filter(Boolean).length,
+    source: withNotes ? 'Gemini grounded in your notes' : 'Gemini',
+  };
+}
+
 async function revealModel() {
-  stopTimer();
+  // timer intentionally keeps running
   const box = el.querySelector('#pr-model-out');
-  if (!box || box.childElementCount) { if (box) box.scrollIntoView({ behavior: 'smooth' }); return; }
+  if (!box) return;
   const limit = wordLimit;
-  const best = await findUploadedModel(current);
-  const ans = best ? renderUploadedModel(best, limit) : synthesizeAnswer(current, limit);
-  box.innerHTML = `
-    <div class="card-ui" style="margin-top:12px">
-      <div class="row">
-        <b class="small" style="color:var(--good)">📄 Model answer</b>
-        <div class="spacer"></div>
-        <span class="tiny muted">≈${ans.words} words · limit ${limit} · ${escapeHtml(ans.source)}</span>
-      </div>
-      <div class="ma-body" style="margin-top:8px">${ans.html}</div>
-    </div>`;
+  box.innerHTML = `<div class="card-ui" style="margin-top:12px"><span class="muted small">✨ Preparing ${limit}-word model answer…</span></div>`;
   box.scrollIntoView({ behavior: 'smooth' });
+  try {
+    const ans = maSource === 'notes' ? await notesAnswer(limit)
+      : maSource === 'gemini' ? await geminiAnswer(limit, false)
+      : await geminiAnswer(limit, true);
+    box.innerHTML = `
+      <div class="card-ui" style="margin-top:12px">
+        <div class="row">
+          <b class="small" style="color:var(--good)">📄 Model answer</b>
+          <div class="spacer"></div>
+          <span class="tiny muted">≈${ans.words} words · limit ${limit} · ${escapeHtml(ans.source)}</span>
+        </div>
+        <div class="ma-body" style="margin-top:8px">${ans.html}</div>
+      </div>`;
+    box.scrollIntoView({ behavior: 'smooth' });
+  } catch (e) {
+    box.innerHTML = `<div class="card-ui" style="margin-top:12px"><span class="small" style="color:var(--bad)">${escapeHtml(e.message)}</span></div>`;
+  }
 }
 
 function stopTimer() { clearInterval(timer); timer = null; }

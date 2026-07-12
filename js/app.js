@@ -65,6 +65,28 @@ async function firstRun() {
   await showView('listen');
 })();
 
+// display preferences (theme / reader size) — applied before first paint
+export function applyDisplayPrefs() {
+  const root = document.documentElement;
+  root.dataset.theme = localStorage.getItem('ui-theme') || 'midnight';
+  root.dataset.rsize = localStorage.getItem('ui-rsize') || 'm';
+}
+applyDisplayPrefs();
+
+// eye-care: 20-20-20 break reminder after 25 min of continuous listening
+let listenMinutes = 0;
+setInterval(() => {
+  if (localStorage.getItem('break-reminder') === 'off') return;
+  if (speech.playing) {
+    listenMinutes++;
+    if (listenMinutes >= 25) {
+      listenMinutes = 0;
+      import('./ui.js').then(({ toast }) =>
+        toast('👀 25 min done — look 20 feet away for 20 seconds. Ears can keep going.', 6000));
+    }
+  }
+}, 60000);
+
 // keyboard controls: space = play/pause, ←/→ = previous/next line
 document.addEventListener('keydown', (e) => {
   const t = e.target;

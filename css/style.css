@@ -8,6 +8,39 @@
   --safe-b:env(safe-area-inset-bottom,0px);
   --safe-t:env(safe-area-inset-top,0px);
 }
+/* ---- long-session comfort themes ---- */
+/* Warm: blue light cut for night study — amber-shifted darks */
+html[data-theme=warm]{
+  --bg:#161009;--bg2:#1e1710;--bg3:#281f14;--line:#3c3020;
+  --tx:#f0e3cb;--tx2:#c6b592;--tx3:#8d7c5c;
+  --acc:#ffb84d;--acc2:#d9a05b;--hl:#332409;--hl-border:#e8a53f;
+}
+/* Sepia: paper mode for daytime — low contrast strain, ink on cream */
+html[data-theme=sepia]{
+  --bg:#f3ebdc;--bg2:#ede2cd;--bg3:#e4d6bb;--line:#d3c2a2;
+  --tx:#3a2e1d;--tx2:#5d4e34;--tx3:#8b7b5d;
+  --acc:#a86206;--acc2:#345f9c;--good:#2c7a4b;--bad:#b33a3a;
+  --hl:#f3d9a4;--hl-border:#a86206;
+}
+html[data-theme=sepia] #topbar,html[data-theme=sepia] #tabbar,html[data-theme=sepia] #pbar{background:rgba(243,235,220,.96)}
+html[data-theme=sepia] .rl b,html[data-theme=sepia] .rl .lead{color:#241a0c}
+html[data-theme=sepia] .rl.k-intro,html[data-theme=sepia] .rl .q{color:#40507c}
+html[data-theme=sepia] .rl .ac{color:#8a5a12}
+html[data-theme=sepia] .rl .ex,html[data-theme=sepia] .rl.k-way{color:#2c7a4b}
+html[data-theme=sepia] .rl.k-concl{color:#8a5a12}
+html[data-theme=sepia] .rl.k-ammo,html[data-theme=sepia] .rl.k-value{color:#7b4ea3}
+html[data-theme=sepia] .rl.cur .spoken{background:#e9c069;color:#241a0c}
+html[data-theme=sepia] .t-chunk.done .rl{color:#8b7b5d}
+html[data-theme=sepia] .btn.primary{color:#fff}
+html[data-theme=sepia] .ma-body .lead{color:#241a0c}
+
+/* ---- reader text size (Settings ▸ Display) ---- */
+html[data-rsize=s] #reader .rl{font-size:14px;line-height:1.55}
+html[data-rsize=l] #reader .rl{font-size:17.5px;line-height:1.75}
+html[data-rsize=l] #reader .theme-head{font-size:18px}
+html[data-rsize=xl] #reader .rl{font-size:20px;line-height:1.85}
+html[data-rsize=xl] #reader .theme-head{font-size:20px}
+
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%}
 body{
@@ -179,7 +212,10 @@ h2.vt{font-size:20px;font-weight:800;margin-bottom:4px}
 .dg-spoke span{color:var(--tx3)}
 
 /* =============== QUIZ =============== */
-.qz-line{font-size:18px;line-height:1.7;font-weight:600;margin:14px 0 18px}
+.qz-line{font-size:16px;line-height:1.75;font-weight:500;margin:14px 0 18px}
+.cat-head{margin-top:10px;font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--acc2);
+  display:flex;justify-content:space-between;align-items:baseline;border-bottom:1px dashed var(--line);padding-bottom:5px}
+.cat-head .tiny{text-transform:none;letter-spacing:0}
 .blank{
   display:inline-block;min-width:64px;background:#26304d;color:transparent;border-bottom:2px solid var(--acc2);
   border-radius:6px;padding:0 8px;cursor:pointer;user-select:none;text-align:center;
