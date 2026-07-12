@@ -123,20 +123,35 @@ export function buildCardsForDoc(doc) {
   return cards;
 }
 
+let subTab = 'cards';
+
 export async function mountCards(root) {
   el = root;
   el.innerHTML = `
     <div class="cards-top">
+      <div class="seg" style="margin-bottom:8px">
+        <button class="seg-btn on" data-sub="cards">🃏 Cards</button>
+        <button class="seg-btn" data-sub="diagrams">📊 Diagrams</button>
+      </div>
       <div class="chiprow" id="cd-chips"></div>
     </div>
-    <div id="reel"></div>`;
+    <div id="reel"></div>
+    <div id="diagrams" style="display:none;flex:1;overflow-y:auto"></div>`;
+  el.querySelectorAll('[data-sub]').forEach(b => b.onclick = async () => {
+    subTab = b.dataset.sub;
+    el.querySelectorAll('[data-sub]').forEach(x => x.classList.toggle('on', x === b));
+    el.querySelector('#reel').style.display = subTab === 'cards' ? '' : 'none';
+    el.querySelector('#cd-chips').style.display = subTab === 'cards' ? '' : 'none';
+    el.querySelector('#diagrams').style.display = subTab === 'diagrams' ? '' : 'none';
+    if (subTab === 'diagrams') await renderDiagramsView();
+  });
   await rebuild();
 }
 
-export async function reloadCards() { if (el) await rebuild(); }
+export async function reloadCards() { if (el) { await rebuild(); if (subTab === 'diagrams') await renderDiagramsView(); } }
 
 async function rebuild() {
-  const docs = await DB.allDocs();
+  const docs = (await DB.allDocs()).filter(d => !d.uses || d.uses.cards !== false);
   allCards = [];
   for (const d of docs) {
     const ai = await DB.getKV('aicards:' + d.id);
@@ -144,6 +159,30 @@ async function rebuild() {
   }
   renderChips(docs);
   applyFilter();
+}
+
+// ---------- diagrams sub-view ----------
+async function renderDiagramsView() {
+  const { buildDiagramsForDoc, renderDiagram } = await import('./diagrams.js');
+  const box = el.querySelector('#diagrams');
+  const docs = (await DB.allDocs()).filter(d => !d.uses || d.uses.diagrams !== false);
+  const parts = [];
+  for (const d of docs) {
+    const groups = buildDiagramsForDoc(d);
+    if (!groups.length) continue;
+    const n = groups.reduce((a, g) => a + g.diagrams.length, 0);
+    parts.push(`<details class="dg-doc"><summary>📊 ${escapeHtml(d.title)} <span class="tiny muted">(${n} diagrams)</span></summary>
+      ${groups.map(g => `
+        <div class="dg-theme">
+          <div class="dg-theme-title">${escapeHtml(g.theme)}</div>
+          ${g.diagrams.map(renderDiagram).join('')}
+        </div>`).join('')}
+    </details>`);
+  }
+  box.innerHTML = `<div class="pad">
+    <p class="muted tiny" style="margin-bottom:10px">Hand-drawable visuals detected in your notes — arrow chains become flowcharts, H1/H2 columns become comparison tables, keyword bullets become maps. Replicate these in the exam for easy presentation marks.</p>
+    ${parts.join('') || '<div class="empty">No diagram-able content detected yet. Upload notes with → chains, H1/H2 comparisons or keyword: bullets.</div>'}
+  </div>`;
 }
 
 function renderChips(docs) {

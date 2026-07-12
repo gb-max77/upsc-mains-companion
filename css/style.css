@@ -89,8 +89,27 @@ h2.vt{font-size:20px;font-weight:800;margin-bottom:4px}
 .rl.k-way{color:#8fd6a8}
 .rl.k-concl{color:#e6c186;font-weight:600}
 .rl.k-ammo{color:#c79ef0}
-.rl.cur{background:var(--hl);border-left-color:var(--hl-border);color:var(--tx)}
+.rl.cur{background:var(--hl);border-left-color:var(--hl-border);color:var(--tx)!important;font-weight:600;opacity:1!important;
+  box-shadow:0 0 0 2px rgba(255,184,77,.25)}
 .rl.cur .spoken{background:#5a4712;border-radius:4px;color:#fff}
+
+/* focus mode: only the theme being read is at full strength */
+.t-chunk{opacity:.38;transition:opacity .35s;margin-bottom:6px}
+.t-chunk.done{opacity:.6}
+.t-chunk.done .rl{color:var(--tx3)}
+.t-chunk.active{opacity:1}
+
+/* theme progress dots — an at-a-glance map of the document */
+#tdots{display:flex;gap:6px;flex-wrap:wrap;padding:9px 16px 2px;max-height:52px;overflow-y:auto}
+.tdot{width:9px;height:9px;border-radius:50%;background:var(--bg3);border:1px solid var(--line);cursor:pointer;
+  transition:transform .15s,background .15s;flex:none}
+.tdot:hover{transform:scale(1.35)}
+.tdot.done{background:var(--acc2);border-color:var(--acc2)}
+.tdot.current{background:var(--acc);border-color:var(--acc);transform:scale(1.5);box-shadow:0 0 0 3px rgba(255,184,77,.25)}
+
+#pl-mode.on-flow{color:var(--acc);border-color:var(--acc)}
+.rl.k-h3{color:var(--acc2);font-weight:700}
+.rl.k-value{color:#c79ef0}
 .rl .kw{color:var(--acc);font-weight:700}          /* years · Articles · cases · data */
 .rl .lead{color:#fff;font-weight:800}              /* keyword lead-in (write this!) */
 .rl .q{font-style:italic;color:#b9c8f8}            /* thinker quotes / doctrines */
@@ -140,6 +159,25 @@ h2.vt{font-size:20px;font-weight:800;margin-bottom:4px}
 .reel-card .rc-foot{position:absolute;bottom:calc(18px);left:22px;right:22px;display:flex;justify-content:space-between;font-size:11px;opacity:.65;font-weight:600}
 .rc-count{font-variant-numeric:tabular-nums}
 
+/* =============== DIAGRAMS =============== */
+.dg-doc{border:1px solid var(--line);border-radius:var(--radius);background:var(--bg2);padding:12px 14px;margin-bottom:10px}
+.dg-doc summary{font-weight:800;font-size:14px;cursor:pointer}
+.dg-theme{margin:14px 0 4px}
+.dg-theme-title{font-weight:800;color:var(--acc);font-size:13.5px;margin-bottom:8px}
+.dg{margin:0 0 14px}
+.dg-flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.dg-box{border:1.5px solid var(--acc2);border-radius:9px;padding:6px 10px;font-size:12.5px;font-weight:600;background:rgba(122,162,255,.08)}
+.dg-arrow{color:var(--acc);font-weight:800}
+.dg-table{width:100%;border-collapse:collapse;font-size:12.5px;overflow-x:auto;display:block}
+.dg-table th{border:1px solid var(--acc2);padding:6px 8px;color:var(--acc2);text-align:left;background:rgba(122,162,255,.08);font-size:12px}
+.dg-table td{border:1px solid var(--line);padding:6px 8px;color:var(--tx2);vertical-align:top;line-height:1.5}
+.dg-map{border:1.5px dashed var(--line);border-radius:12px;padding:10px}
+.dg-hub{display:inline-block;border:1.5px solid var(--acc);color:var(--acc);border-radius:99px;padding:5px 14px;font-weight:800;font-size:12.5px;margin-bottom:8px}
+.dg-spokes{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:7px}
+.dg-spoke{border:1px solid var(--line);border-radius:9px;padding:7px 9px;font-size:12px;line-height:1.5}
+.dg-spoke b{color:var(--tx);display:block}
+.dg-spoke span{color:var(--tx3)}
+
 /* =============== QUIZ =============== */
 .qz-line{font-size:18px;line-height:1.7;font-weight:600;margin:14px 0 18px}
 .blank{
@@ -174,6 +212,11 @@ h2.vt{font-size:20px;font-weight:800;margin-bottom:4px}
   font-size:14px;cursor:pointer;
 }
 #drop.hot{border-color:var(--acc);color:var(--acc)}
+.seg{display:flex;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px}
+.seg-btn{flex:1;padding:8px 6px;border-radius:9px;font-size:13px;font-weight:700;color:var(--tx3)}
+.seg-btn.on{background:var(--bg3);color:var(--acc)}
+.folder{border:1px solid var(--line);border-radius:var(--radius);padding:10px 12px;background:var(--bg2)}
+.folder-head{display:flex;justify-content:space-between;align-items:center;font-weight:800;font-size:14px;cursor:pointer;padding:2px 0}
 .editor-ta{width:100%;height:56dvh;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.6;white-space:pre}
 progress{width:100%}
 @media(min-width:760px){

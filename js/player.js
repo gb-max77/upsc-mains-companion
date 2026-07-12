@@ -1,18 +1,25 @@
-// Listen view: read-along player with theme navigation and speed control
+// Listen view: karaoke read-along player with focus mode, theme dots,
+// Verbatim/Flow narration modes and cross-document theme navigation.
 import { DB } from './db.js';
-import { parseStructure, classifyLine, cleanTitle, titleMeta, decorateLine } from './parser.js';
+import { parseStructure, flowLines, classifyLine, cleanTitle, titleMeta, decorateLine } from './parser.js';
 import { speech, SPEEDS } from './tts.js';
-import { sheet, closeSheet } from './ui.js';
+import { sheet, closeSheet, toast } from './ui.js';
 
-let el, doc = null, structure = null, autoScroll = true, saveTimer = null;
+let el, doc = null, lines = [], structure = null, chunks = [], mode = 'verbatim';
+let autoScroll = true, saveTimer = null;
+
+const modeKey = id => 'mode:' + id;
+const posKey = (id, m) => `pos:${id}:${m}`;
 
 export async function mountListen(root) {
   el = root;
   el.innerHTML = `
     <div class="player-head">
       <select id="pl-doc"></select>
+      <button class="btn sm" id="pl-mode" title="Narration mode">🎞 Flow</button>
       <button class="btn sm" id="pl-themes">☰ Themes</button>
     </div>
+    <div id="tdots"></div>
     <div id="reader"><div class="empty">Loading…</div></div>
     <div id="pbar">
       <div class="prog"><i id="pl-prog"></i></div>
@@ -29,7 +36,8 @@ export async function mountListen(root) {
     </div>`;
 
   el.querySelector('#pl-doc').onchange = e => openDoc(e.target.value);
-  el.querySelector('#pl-play').onclick = () => togglePlay();
+  el.querySelector('#pl-mode').onclick = toggleMode;
+  el.querySelector('#pl-play').onclick = () => speech.toggle();
   el.querySelector('#pl-next').onclick = () => speech.next();
   el.querySelector('#pl-prev').onclick = () => speech.prev();
   el.querySelector('#pl-nextth').onclick = () => jumpTheme(1);
@@ -41,7 +49,6 @@ export async function mountListen(root) {
   const reader = el.querySelector('#reader');
   let scrollPause;
   reader.addEventListener('scroll', () => {
-    // ignore events caused by our own smooth scrollIntoView (they stream for ~1s)
     if (Date.now() < (reader._autoUntil || 0)) return;
     autoScroll = false;
     clearTimeout(scrollPause);
@@ -52,12 +59,16 @@ export async function mountListen(root) {
   await refreshDocList();
 }
 
+async function audioDocs() {
+  return (await DB.allDocs()).filter(d => !d.uses || d.uses.audio !== false);
+}
+
 async function refreshDocList(keepId, force = false) {
-  const docs = await DB.allDocs();
+  const docs = await audioDocs();
   const sel = el.querySelector('#pl-doc');
   sel.innerHTML = docs.map(d => `<option value="${d.id}">${escapeHtml(d.title)}</option>`).join('');
   if (!docs.length) {
-    el.querySelector('#reader').innerHTML = `<div class="empty">No documents yet.<br>Add notes in the <b>Library</b> tab.</div>`;
+    el.querySelector('#reader').innerHTML = `<div class="empty">No audio documents yet.<br>Add notes in the <b>Library</b> tab.</div>`;
     doc = null;
     return;
   }
@@ -67,7 +78,6 @@ async function refreshDocList(keepId, force = false) {
   if (force || !doc || doc.id !== target) await openDoc(target);
 }
 
-// force=true so an edited document is re-parsed and the audio adapts
 export async function reloadListen() { if (el) await refreshDocList(doc && doc.id, true); }
 
 async function openDoc(id) {
@@ -75,32 +85,82 @@ async function openDoc(id) {
   doc = await DB.getDoc(id);
   if (!doc) return;
   await DB.setKV('last-doc', id);
-  structure = parseStructure(doc.lines);
+  mode = localStorage.getItem(modeKey(id)) || doc.mode || 'verbatim';
+  await applyMode();
+}
+
+async function applyMode() {
+  lines = mode === 'flow' ? flowLines(doc.lines) : doc.lines;
+  structure = parseStructure(lines);
+  buildChunks();
+  renderModeBtn();
   renderReader();
-  const pos = await DB.getKV('pos:' + id, 0);
-  speech.load(doc.lines, pos);
-  markCurrent(speech.idx, false);
+  renderDots();
+  const pos = await DB.getKV(posKey(doc.id, mode), 0);
+  speech.load(lines, pos);
+  markCurrent(speech.idx, true);
   updateMeta();
 }
 
+function renderModeBtn() {
+  const b = el.querySelector('#pl-mode');
+  b.textContent = mode === 'flow' ? '🎞 Flow' : '📜 Verbatim';
+  b.classList.toggle('on-flow', mode === 'flow');
+}
+
+async function toggleMode() {
+  mode = mode === 'flow' ? 'verbatim' : 'flow';
+  localStorage.setItem(modeKey(doc.id), mode);
+  const wasPlaying = speech.playing;
+  speech.stop();
+  await applyMode();
+  toast(mode === 'flow'
+    ? 'Flow mode: Intro → H1/H2/H3 with their points → Way-forward pack → Conclusion'
+    : 'Verbatim mode: reading word-for-word in document order');
+  if (wasPlaying) speech.play();
+}
+
+// ---------- structure → chunks (one per theme, gaps covered) ----------
+function buildChunks() {
+  chunks = [];
+  for (const sec of structure.sections) {
+    let cursor = sec.start;
+    for (const th of sec.themes) {
+      if (th.start > cursor) chunks.push({ start: cursor, end: th.start, theme: null });
+      chunks.push({ start: th.start, end: th.end, theme: th.pseudo ? null : th });
+      cursor = th.end;
+    }
+    if (cursor < sec.end) chunks.push({ start: cursor, end: sec.end, theme: null });
+  }
+}
+
+function chunkOf(idx) {
+  for (let c = 0; c < chunks.length; c++) if (idx >= chunks[c].start && idx < chunks[c].end) return c;
+  return -1;
+}
+
+// ---------- render ----------
 function renderReader() {
   const reader = el.querySelector('#reader');
+  const secTitles = new Map(structure.sections.map(s => [s.start, s]));
   const parts = [];
-  for (const sec of structure.sections) {
-    const real = doc.lines[sec.start] === sec.title; // section title is an actual line
-    parts.push(`<div class="sec-head" ${real ? `data-idx="${sec.start}" id="ln-${sec.start}"` : ''}>${escapeHtml(cleanTitle(sec.title) || sec.title)}</div>`);
-    const themeStarts = new Map(sec.themes.map(t => [t.start, t]));
-    for (let i = real ? sec.start + 1 : sec.start; i < sec.end; i++) {
-      const th = themeStarts.get(i);
-      if (th && !th.pseudo) {
-        const meta = titleMeta(doc.lines[i]);
-        parts.push(`<div class="theme-head" data-idx="${i}" id="ln-${i}">${escapeHtml(cleanTitle(doc.lines[i]))}${meta ? `<span class="tmeta">${escapeHtml(meta)}</span>` : ''}</div>`);
+  chunks.forEach((ch, ci) => {
+    const inner = [];
+    for (let i = ch.start; i < ch.end; i++) {
+      const sec = secTitles.get(i);
+      if (sec && lines[i] === sec.title) {
+        inner.push(`<div class="sec-head" data-idx="${i}" id="ln-${i}">${escapeHtml(cleanTitle(sec.title) || sec.title)}</div>`);
         continue;
       }
-      const kind = classifyLine(doc.lines[i]);
-      parts.push(`<div class="rl k-${kind}" data-idx="${i}" id="ln-${i}">${decorateLine(doc.lines[i])}</div>`);
+      if (ch.theme && i === ch.start) {
+        const meta = titleMeta(lines[i]);
+        inner.push(`<div class="theme-head" data-idx="${i}" id="ln-${i}">${escapeHtml(cleanTitle(lines[i]))}${meta ? `<span class="tmeta">${escapeHtml(meta)}</span>` : ''}</div>`);
+        continue;
+      }
+      inner.push(`<div class="rl k-${classifyLine(lines[i])}" data-idx="${i}" id="ln-${i}">${decorateLine(lines[i])}</div>`);
     }
-  }
+    parts.push(`<div class="t-chunk" data-c="${ci}">${inner.join('')}</div>`);
+  });
   reader.innerHTML = parts.join('');
   reader.onclick = (e) => {
     const t = e.target.closest('[data-idx]');
@@ -110,6 +170,21 @@ function renderReader() {
   };
 }
 
+function renderDots() {
+  const box = el.querySelector('#tdots');
+  const themes = chunks.filter(c => c.theme);
+  if (themes.length < 2) { box.innerHTML = ''; box.style.display = 'none'; return; }
+  box.style.display = '';
+  box.innerHTML = themes.map((c, k) =>
+    `<span class="tdot" data-start="${c.start}" title="${escapeHtml(cleanTitle(c.theme.title))}"></span>`).join('');
+  box.querySelectorAll('.tdot').forEach(d => d.onclick = () => {
+    speech.seek(+d.dataset.start);
+    speech.play();
+    markCurrent(+d.dataset.start, true);
+  });
+}
+
+// ---------- speech wiring & highlight ----------
 function wireSpeech() {
   speech.onLine = (i) => { markCurrent(i, true); updateMeta(); savePos(); };
   speech.onLineDone = (i) => {
@@ -119,7 +194,6 @@ function wireSpeech() {
   speech.onWord = (i, s, e2, len) => {
     const n = el.querySelector(`#ln-${i}`);
     if (!n || !n.classList.contains('rl')) return;
-    // approximate mapping from spoken char position -> displayed text position
     highlightWordAt(n, s / Math.max(len, 1));
   };
   speech.onState = (playing) => {
@@ -134,55 +208,59 @@ function highlightWordAt(node, frac) {
   const pos = Math.min(Math.floor(frac * text.length), text.length - 1);
   let a = text.lastIndexOf(' ', pos) + 1;
   let b = text.indexOf(' ', pos); if (b < 0) b = text.length;
-  // keep memorisation colours while reading: decorate the around-word segments
   node.innerHTML = decorateLine(text.slice(0, a))
     + '<span class="spoken">' + escapeHtml(text.slice(a, b)) + '</span>'
     + decorateLine(text.slice(b));
 }
 
 function markCurrent(i, scroll) {
-  el.querySelectorAll('.rl.cur, .theme-head.cur').forEach(n => {
+  el.querySelectorAll('.rl.cur, .theme-head.cur, .sec-head.cur').forEach(n => {
     n.classList.remove('cur');
     if (n._plain) { n.innerHTML = decorateLine(n._plain); n._plain = null; }
   });
   const n = el.querySelector(`#ln-${i}`);
-  if (!n) return;
-  n.classList.add('cur');
-  n.classList.remove('done');
-  if (scroll && autoScroll) {
-    const reader = el.querySelector('#reader');
-    reader._autoUntil = Date.now() + 600;
-    reader.scrollTo(0, Math.max(0, n.offsetTop - reader.clientHeight / 2 + n.offsetHeight / 2));
+  if (n) {
+    n.classList.add('cur');
+    n.classList.remove('done');
+    if (scroll && autoScroll) {
+      const reader = el.querySelector('#reader');
+      reader._autoUntil = Date.now() + 600;
+      reader.scrollTo(0, Math.max(0, n.offsetTop - reader.clientHeight / 2 + n.offsetHeight / 2));
+    }
   }
+  // focus mode: active chunk full strength, done chunks faded, rest dimmed
+  const ci = chunkOf(i);
+  el.querySelectorAll('.t-chunk').forEach(c => {
+    const k = +c.dataset.c;
+    c.classList.toggle('active', k === ci);
+    c.classList.toggle('done', k < ci);
+  });
+  // dots
+  const themeChunks = chunks.filter(c => c.theme);
+  let curStart = null;
+  for (const c of themeChunks) { if (c.start <= i) curStart = c.start; else break; }
+  el.querySelectorAll('.tdot').forEach(d => {
+    d.classList.toggle('current', +d.dataset.start === curStart);
+    d.classList.toggle('done', curStart !== null && +d.dataset.start < curStart);
+  });
   updateMeta();
 }
 
 function updateMeta() {
   if (!doc) return;
   const i = speech.idx;
-  el.querySelector('#pl-prog').style.width = (100 * i / Math.max(doc.lines.length - 1, 1)) + '%';
-  el.querySelector('#pl-pos').textContent = `${i + 1} / ${doc.lines.length}`;
-  const th = currentTheme();
+  el.querySelector('#pl-prog').style.width = (100 * i / Math.max(lines.length - 1, 1)) + '%';
+  el.querySelector('#pl-pos').textContent = `${i + 1} / ${lines.length}`;
+  const ci = chunkOf(i);
+  const th = ci >= 0 && chunks[ci].theme;
   el.querySelector('#pl-now').textContent = th ? cleanTitle(th.title) : '';
   el.querySelector('#pl-speed').textContent = fmtSpeed(speech.rate);
 }
 
-function currentTheme() {
-  for (const s of structure.sections)
-    for (const t of s.themes)
-      if (speech.idx >= t.start && speech.idx < t.end) return t;
-  return null;
-}
-
-function togglePlay() {
-  if (!doc) return;
-  speech.toggle();
-}
-
 function jumpTheme(dir) {
-  const ths = structure.sections.flatMap(s => s.themes);
+  const ths = chunks.filter(c => c.theme);
   if (!ths.length) return;
-  const cur = ths.findIndex(t => speech.idx >= t.start && speech.idx < t.end);
+  const cur = ths.findIndex(c => speech.idx >= c.start && speech.idx < c.end);
   const nxt = Math.max(0, Math.min(ths.length - 1, (cur < 0 ? 0 : cur + dir)));
   speech.seek(ths[nxt].start);
   markCurrent(ths[nxt].start, true);
@@ -190,7 +268,7 @@ function jumpTheme(dir) {
 
 function savePos() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => { if (doc) DB.setKV('pos:' + doc.id, speech.idx); }, 800);
+  saveTimer = setTimeout(() => { if (doc) DB.setKV(posKey(doc.id, mode), speech.idx); }, 800);
 }
 
 // ---------- sheets ----------
@@ -218,24 +296,31 @@ function showVoiceSheet() {
 }
 
 async function showThemesSheet() {
-  const docs = await DB.allDocs();
+  const docs = await audioDocs();
   const parts = [];
   for (const d of docs) {
-    const st = parseStructure(d.lines);
+    // index against the lines this doc will actually open with (its saved mode)
+    let st;
+    if (doc && d.id === doc.id) {
+      st = structure;
+    } else {
+      const m = localStorage.getItem(modeKey(d.id)) || d.mode || 'verbatim';
+      st = parseStructure(m === 'flow' ? flowLines(d.lines) : d.lines);
+    }
     const isCurrent = doc && d.id === doc.id;
     parts.push(`<div class="drawer-doc ${isCurrent ? 'cur' : ''}">${isCurrent ? '▶ ' : ''}${escapeHtml(d.title)}</div>`);
     let n = 0;
     for (const s of st.sections) {
-      if (!s.themes.length) continue;
+      const real = s.themes.filter(t => !t.pseudo);
+      if (!real.length) continue;
       parts.push(`<div class="drawer-sec">${escapeHtml(cleanTitle(s.title) || s.title)}</div>`);
-      for (const t of s.themes) {
+      for (const t of real) {
         n++;
         parts.push(`<div class="drawer-item" data-doc="${d.id}" data-i="${t.start}"><span class="n">${n}</span><span>${escapeHtml(cleanTitle(t.title))}</span></div>`);
       }
     }
   }
   sheet(`<h3>Jump to theme</h3>` + parts.join(''), (root) => {
-    // open scrolled to the current document's block
     const cur = root.querySelector('.drawer-doc.cur');
     if (cur) cur.scrollIntoView({ block: 'start' });
     root.querySelectorAll('.drawer-item').forEach(nEl => nEl.onclick = async () => {

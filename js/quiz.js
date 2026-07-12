@@ -23,9 +23,11 @@ const PATTERNS = [
 
 let el, pool = [], round = [], qIdx = 0, score = { got: 0, missed: 0 }, filterDoc = 'all', docs = [];
 
+const quizDocs = async () => (await DB.allDocs()).filter(d => !d.uses || d.uses.quiz !== false);
+
 export async function mountQuiz(root) {
   el = root;
-  docs = await DB.allDocs();
+  docs = await quizDocs();
   el.innerHTML = `
     <div class="pad">
       <h2 class="vt">🧠 Active recall</h2>
@@ -38,7 +40,7 @@ export async function mountQuiz(root) {
   newRound();
 }
 
-export async function reloadQuiz() { if (el) { docs = await DB.allDocs(); renderChips(); await buildPool(); newRound(); } }
+export async function reloadQuiz() { if (el) { docs = await quizDocs(); renderChips(); await buildPool(); newRound(); } }
 
 function renderChips() {
   const chips = el.querySelector('#qz-chips');
@@ -108,11 +110,18 @@ function newRound() {
   round = [];
   const src = pool.slice();
   for (let i = 0; i < 12 && src.length; i++) {
-    round.push(src.splice(Math.floor(Math.random() * src.length), 1)[0]);
+    const q = src.splice(Math.floor(Math.random() * src.length), 1)[0];
+    // pick blanks ONCE so revisiting a question shows the same blanks
+    round.push({ ...q, blanks: pickBlanks(q.matches), state: null, revealed: new Set() });
   }
-  qIdx = 0; score = { got: 0, missed: 0 };
+  qIdx = 0;
   renderQ();
 }
+
+const tally = () => round.reduce((s, q) => {
+  if (q.state === 'got') s.got++; else if (q.state === 'missed') s.missed++;
+  return s;
+}, { got: 0, missed: 0 });
 
 function renderQ() {
   const body = el.querySelector('#qz-body');
@@ -120,45 +129,52 @@ function renderQ() {
     body.innerHTML = `<div class="empty">No quizzable facts found. Add documents in the Library tab.</div>`;
     return;
   }
+  const sc = tally();
   if (qIdx >= round.length) {
-    const pct = Math.round(100 * score.got / Math.max(score.got + score.missed, 1));
+    const pct = Math.round(100 * sc.got / Math.max(sc.got + sc.missed, 1));
     body.innerHTML = `
       <div class="card-ui" style="text-align:center;padding:34px 18px">
         <div style="font-size:44px">${pct >= 80 ? '🏆' : pct >= 50 ? '💪' : '📖'}</div>
         <h3 style="margin:10px 0 4px">Round complete</h3>
-        <p class="muted">Recalled ${score.got} · missed ${score.missed} — ${pct}%</p>
-        <button class="btn primary" id="qz-again" style="margin-top:16px">New round</button>
+        <p class="muted">Recalled ${sc.got} · missed ${sc.missed} — ${pct}%</p>
+        <div class="row" style="justify-content:center;gap:10px;margin-top:16px">
+          <button class="btn" id="qz-back">‹ Review questions</button>
+          <button class="btn primary" id="qz-again">New round</button>
+        </div>
       </div>`;
     body.querySelector('#qz-again').onclick = newRound;
+    body.querySelector('#qz-back').onclick = () => { qIdx = round.length - 1; renderQ(); };
     return;
   }
   const q = round[qIdx];
   let html = '', last = 0;
-  const blanks = pickBlanks(q.matches);
-  for (const m of blanks) {
+  for (const m of q.blanks) {
     html += escapeHtml(q.line.slice(last, m.start));
-    html += `<span class="blank" data-a="${escapeHtml(m.text)}">${escapeHtml(m.text)}</span>`;
+    html += `<span class="blank ${q.revealed.has(m.start) ? 'shown' : ''}" data-s="${m.start}" data-a="${escapeHtml(m.text)}">${escapeHtml(m.text)}</span>`;
     last = m.end;
   }
   html += escapeHtml(q.line.slice(last));
 
-  const body2 = `
+  body.innerHTML = `
     <div class="card-ui">
-      <div class="qz-ctx">${escapeHtml(q.theme)}</div>
+      <div class="qz-ctx">${escapeHtml(q.theme)}${q.state ? ` · <span style="color:${q.state === 'got' ? 'var(--good)' : 'var(--bad)'}">${q.state === 'got' ? '✓ recalled' : '✗ missed'}</span>` : ''}</div>
       <div class="qz-line">${html}</div>
       <div class="row">
         <button class="btn sm ghost" id="qz-reveal">Reveal all</button>
         <div class="spacer"></div>
-        <span class="qz-score">${qIdx + 1}/${round.length} · ✅ ${score.got} ❌ ${score.missed}</span>
+        <span class="qz-score">${qIdx + 1}/${round.length} · ✅ ${sc.got} ❌ ${sc.missed}</span>
       </div>
     </div>
-    <div class="row" style="margin-top:14px;justify-content:center;gap:12px">
+    <div class="row" style="margin-top:14px;justify-content:center;gap:10px">
+      <button class="btn" id="qz-prev" ${qIdx === 0 ? 'disabled style="opacity:.35"' : ''}>‹ Prev</button>
       <button class="btn" id="qz-miss" style="color:var(--bad)">✗ Missed it</button>
       <button class="btn primary" id="qz-got">✓ Got it</button>
+      <button class="btn" id="qz-next">Next ›</button>
     </div>`;
-  body.innerHTML = body2;
-  body.querySelectorAll('.blank').forEach(b => b.onclick = () => b.classList.add('shown'));
-  body.querySelector('#qz-reveal').onclick = () => body.querySelectorAll('.blank').forEach(b => b.classList.add('shown'));
-  body.querySelector('#qz-got').onclick = () => { score.got++; qIdx++; renderQ(); };
-  body.querySelector('#qz-miss').onclick = () => { score.missed++; qIdx++; renderQ(); };
+  body.querySelectorAll('.blank').forEach(b => b.onclick = () => { b.classList.add('shown'); q.revealed.add(+b.dataset.s); });
+  body.querySelector('#qz-reveal').onclick = () => body.querySelectorAll('.blank').forEach(b => { b.classList.add('shown'); q.revealed.add(+b.dataset.s); });
+  body.querySelector('#qz-got').onclick = () => { q.state = 'got'; qIdx++; renderQ(); };
+  body.querySelector('#qz-miss').onclick = () => { q.state = 'missed'; qIdx++; renderQ(); };
+  body.querySelector('#qz-prev').onclick = () => { if (qIdx > 0) { qIdx--; renderQ(); } };
+  body.querySelector('#qz-next').onclick = () => { qIdx++; renderQ(); };
 }

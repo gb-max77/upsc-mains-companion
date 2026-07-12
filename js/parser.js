@@ -7,7 +7,12 @@
 
 const RE_THEME_T = /^T\d{1,3}\s*[·.:]\s*\S/;
 const RE_THEME_WORD = /^Theme\s+\d{1,3}\s*[·.:\-–]\s*\S/i;
+const RE_THEME_MD = /^#{2,4}\s+\S/;                    // markdown ##/###/#### headings
+const RE_THEME_TOPIC = /^(?:Topic|Chapter|Unit|Q)\s*\d{1,3}\s*[·.:\-–)]\s*\S/i;
+const RE_THEME_DECIMAL = /^\d{1,2}\.\d{1,2}\s+\S/;     // 1.1 / 2.3 numbering
 const RE_SEC_DOT = /^\d{1,2}\s*·\s+\S/;
+const RE_SEC_MD = /^#\s+\S/;                           // markdown # heading
+const RE_SEC_ROMAN = /^[IVX]{1,4}[.)]\s+[A-Z]/;        // I. / IV) …
 const RE_NUMBERED = /^\d{1,3}\.\s+\S/;
 
 function isAllCaps(line) {
@@ -26,28 +31,35 @@ function looksLikeQuestion(line) {
 export function parseStructure(lines) {
   const n = lines.length;
 
-  // Decide theme matcher
-  let isTheme;
-  if (lines.some(l => RE_THEME_T.test(l))) {
-    isTheme = l => RE_THEME_T.test(l);
-  } else if (lines.some(l => RE_THEME_WORD.test(l))) {
-    isTheme = l => RE_THEME_WORD.test(l);
-  } else {
-    // numbered topics as themes — but only short, non-question lines
-    const cand = lines.filter(l => RE_NUMBERED.test(l) && !looksLikeQuestion(l) && l.length < 110);
-    isTheme = cand.length >= 4
-      ? l => RE_NUMBERED.test(l) && !looksLikeQuestion(l) && l.length < 110
-      : () => false;
+  // Decide theme matcher — first candidate style with enough hits wins.
+  // Explicit styles (T1 ·, Theme 1 ·) win on a single hit; generic styles
+  // (markdown, decimals, bare numbering) need several hits so stray lines
+  // don't hijack the structure.
+  const themeCandidates = [
+    { re: l => RE_THEME_T.test(l), min: 1 },
+    { re: l => RE_THEME_WORD.test(l), min: 1 },
+    { re: l => RE_THEME_MD.test(l), min: 2 },
+    { re: l => RE_THEME_TOPIC.test(l), min: 2 },
+    { re: l => RE_THEME_DECIMAL.test(l) && l.length < 110, min: 3 },
+    { re: l => RE_NUMBERED.test(l) && !looksLikeQuestion(l) && l.length < 110, min: 4 },
+    // short Title-Case line ending in ':' acting as a topic marker
+    { re: l => /^[A-Z][^:]{4,70}:$/.test(l) && !/^H\d/.test(l), min: 5 },
+  ];
+  let isTheme = () => false;
+  for (const c of themeCandidates) {
+    if (lines.filter(c.re).length >= c.min) { isTheme = c.re; break; }
   }
 
   // Decide section matcher (must not also be a theme)
-  let isSection;
-  if (lines.some(l => RE_SEC_DOT.test(l) && !isTheme(l))) {
-    isSection = l => RE_SEC_DOT.test(l) && !isTheme(l);
-  } else if (lines.some(l => isAllCaps(l) && !isTheme(l))) {
-    isSection = l => isAllCaps(l) && !isTheme(l);
-  } else {
-    isSection = () => false;
+  const sectionCandidates = [
+    l => RE_SEC_DOT.test(l),
+    l => RE_SEC_MD.test(l),
+    l => isAllCaps(l),
+    l => RE_SEC_ROMAN.test(l),
+  ];
+  let isSection = () => false;
+  for (const c of sectionCandidates) {
+    if (lines.some(l => c(l) && !isTheme(l))) { isSection = l => c(l) && !isTheme(l); break; }
   }
 
   const sections = [];
@@ -101,16 +113,73 @@ export function parseStructure(lines) {
   return { sections };
 }
 
-// ---- line classification (styling / cards / speech) ----
+// ---- line classification (styling / cards / speech / flow) ----
 export function classifyLine(line) {
   if (/^Intro\b/i.test(line)) return 'intro';
   if (/^H1\b/.test(line)) return 'h1';
   if (/^H2\b/.test(line)) return 'h2';
+  if (/^H3\b/.test(line)) return 'h3';
   if (/^Way\s?-?\s?F(or)?w(ar)?d/i.test(line) || /^Way fwd/i.test(line)) return 'way';
   if (/^Concl/i.test(line)) return 'concl';
-  if (/^[＋+]\s?Ammo/i.test(line) || /^＋/.test(line)) return 'ammo';
+  if (/^Value\s?-?\s?Add(ition|n)?/i.test(line)) return 'value';
+  if (/^[＋+]\s?Ammo/i.test(line) || /^＋/.test(line) || /^[＋+]?\s?20\d\d\s+(ammo|addition)/i.test(line)) return 'ammo';
   if (/^[▪•‣]/.test(line)) return 'bullet';
   return 'plain';
+}
+
+// ---- Flow mode: reorder each theme into the strict revision sequence ----
+// Intro (all options) → H1 + its content → H2 + content → H3 + content →
+// Way-Forward block (way fwd + value-addition + ammo + 2026 additions) →
+// Conclusion. Unclassified lines fold into the nearest block so nothing
+// from the notes is lost.
+export function flowLines(lines) {
+  const { sections } = parseStructure(lines);
+  const out = [];
+  for (const sec of sections) {
+    const real = lines[sec.start] === sec.title;
+    if (real) out.push(sec.title);
+    const themeStarts = new Set(sec.themes.filter(t => !t.pseudo).map(t => t.start));
+    for (const th of sec.themes) {
+      if (th.pseudo) {
+        // unstructured stretch — emit as-is (skip the section title we already emitted)
+        for (let i = th.start; i < th.end; i++) {
+          if (i === sec.start && real) continue;
+          out.push(lines[i]);
+        }
+        continue;
+      }
+      out.push(lines[th.start]); // theme title
+      const intros = [], blocks = [], way = [], concl = [];
+      let cur = null;
+      for (let i = th.start + 1; i < th.end; i++) {
+        if (themeStarts.has(i)) break;
+        const l = lines[i];
+        switch (classifyLine(l)) {
+          case 'intro': intros.push(l); break;
+          case 'h1': case 'h2': case 'h3': cur = { head: l, content: [] }; blocks.push(cur); break;
+          case 'way': case 'value': case 'ammo': way.push(l); break;
+          case 'concl': concl.push(l); break;
+          default:
+            if (cur) cur.content.push(l);
+            else intros.push(l); // fold pre-head misc into the intro block
+        }
+      }
+      // Adjacent heads (H1 then H2 with no content between) mean the source
+      // was a side-by-side table whose rows interleave col1,col2,col1,col2 —
+      // deal the bullets back round-robin so each head gets ITS content.
+      if (blocks.length > 1
+          && blocks.slice(0, -1).every(b => !b.content.length)
+          && blocks[blocks.length - 1].content.length >= blocks.length) {
+        const items = blocks[blocks.length - 1].content;
+        blocks.forEach(b => { b.content = []; });
+        items.forEach((it, k) => blocks[k % blocks.length].content.push(it));
+      }
+      out.push(...intros);
+      for (const b of blocks) { out.push(b.head, ...b.content); }
+      out.push(...way, ...concl);
+    }
+  }
+  return out;
 }
 
 export function cleanTitle(t) {

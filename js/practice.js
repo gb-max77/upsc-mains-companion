@@ -4,22 +4,52 @@
 // one matches, otherwise composed from the notes theme — sized to the word limit.
 import { DB } from './db.js';
 import { parseStructure, classifyLine, cleanTitle, decorateLine } from './parser.js';
-import { escapeHtml, sheet, closeSheet } from './ui.js';
+import { escapeHtml, sheet, closeSheet, toast } from './ui.js';
 
-const DURATIONS = [
-  { label: '7.5 min · 10-marker', secs: 7.5 * 60, marks: 10, words: 150 },
-  { label: '9.5 min · 15/20-marker', secs: 9.5 * 60, marks: 15, words: 250 },
-];
+// time and word limit are independent — you pick each
+const TIMES = [7.5, 9.5];                 // minutes
+const WORDS = [100, 150, 200, 250];       // word limits
 
-let el, docs = [], current = null, timer = null, remaining = 0, duration = DURATIONS[1];
+let el, docs = [], current = null, timer = null, remaining = 0;
+let mins = 9.5, wordLimit = 250, qMode = 'questions'; // 'questions' | 'themes'
+
+const answerDocs = async () => (await DB.allDocs()).filter(d => !d.uses || d.uses.answer !== false);
 
 export async function mountPractice(root) {
   el = root;
-  docs = await DB.allDocs();
+  docs = await answerDocs();
   renderIdle();
 }
 
-export async function reloadPractice() { if (el) { docs = await DB.allDocs(); if (!timer) renderIdle(); } }
+export async function reloadPractice() { if (el) { docs = await answerDocs(); if (!timer) renderIdle(); } }
+
+// ---------- predicted-question bank ----------
+// pulls real question lines out of the notes (numbered question banks,
+// ★-tagged predictions, "Discuss/Examine…?" lines) and maps each to its
+// best-matching theme in the same document for reveal/model-answer.
+function extractQuestions(doc) {
+  const qs = [];
+  for (const l of doc.lines) {
+    const numbered = /^\d{1,3}[.)]\s+/.test(l) || /^Q\d{1,3}[.:)]?\s+/.test(l);
+    const asks = /\?/.test(l) || /\b(Discuss|Examine|Elucidate|Comment|Analyse|Analyze|Evaluate|Critically|Do you agree|In (the )?light of)\b/i.test(l);
+    if (numbered && asks && l.length > 40 && l.length < 400) {
+      qs.push(l.replace(/^\d{1,3}[.)]\s*/, '').replace(/^Q\d{1,3}[.:)]?\s*/, '').replace(/^★\s*/, '').replace(/\[T\d+\]\s*$/, '').trim());
+    }
+  }
+  return [...new Set(qs)];
+}
+
+function bestTheme(doc, questionText) {
+  const q = tokens(questionText);
+  const ths = themesOf(doc);
+  let best = null, bestScore = 0;
+  for (const t of ths) {
+    const head = doc.lines.slice(t.start, Math.min(t.start + 4, t.end)).join(' ');
+    const s = overlap(q, tokens(cleanTitle(t.title) + ' ' + head));
+    if (s > bestScore) { bestScore = s; best = t; }
+  }
+  return best || ths[0] || null;
+}
 
 function renderIdle() {
   stopTimer();
@@ -27,17 +57,26 @@ function renderIdle() {
   el.innerHTML = `
     <div class="pad">
       <h2 class="vt">✍️ Answer writing</h2>
-      <p class="muted small">A theme becomes your question. Write the answer on paper against the clock, then compare with the structure and a full model answer.</p>
+      <p class="muted small">Write the answer on paper against the clock, then compare with the structure and a full model answer.</p>
       <div class="card-ui" style="margin-top:14px">
+        <label class="tiny muted">Question source</label>
+        <div class="chiprow" id="pr-mode" style="margin:6px 0 12px">
+          <button class="chip ${qMode === 'questions' ? 'on' : ''}" data-m="questions">🎯 Predicted questions</button>
+          <button class="chip ${qMode === 'themes' ? 'on' : ''}" data-m="themes">📚 Themes</button>
+        </div>
         <label class="tiny muted">Subject</label>
         <select id="pr-doc" style="width:100%;margin:6px 0 12px">${docs.map(d => `<option value="${d.id}">${escapeHtml(d.title)}</option>`).join('')}</select>
-        <label class="tiny muted">Time limit</label>
-        <div class="chiprow" id="pr-durs" style="margin-top:6px">
-          ${DURATIONS.map((d, i) => `<button class="chip ${d === duration ? 'on' : ''}" data-i="${i}">${d.label}</button>`).join('')}
+        <label class="tiny muted">Time</label>
+        <div class="chiprow" id="pr-durs" style="margin:6px 0 12px">
+          ${TIMES.map(t => `<button class="chip ${t === mins ? 'on' : ''}" data-t="${t}">${t} min</button>`).join('')}
+        </div>
+        <label class="tiny muted">Word limit (sizes the model answer)</label>
+        <div class="chiprow" id="pr-words" style="margin-top:6px">
+          ${WORDS.map(w => `<button class="chip ${w === wordLimit ? 'on' : ''}" data-w="${w}">${w} words</button>`).join('')}
         </div>
         <div class="row" style="margin-top:16px">
-          <button class="btn primary" id="pr-random">🎲 Random theme</button>
-          <button class="btn" id="pr-pick">Pick a theme</button>
+          <button class="btn primary" id="pr-random">🎲 Random</button>
+          <button class="btn" id="pr-pick">Pick</button>
         </div>
       </div>
       <div class="card-ui" style="margin-top:12px">
@@ -45,10 +84,17 @@ function renderIdle() {
         <p class="muted small" style="margin-top:6px;line-height:1.6">Intro with a case/data/thinker → 2 balanced body heads (H1/H2) → every point as <i>keyword → mechanism → named example</i> → way forward → forward-looking conclusion. Your notes carry all of it — this drill makes it automatic.</p>
       </div>
     </div>`;
+  el.querySelectorAll('#pr-mode .chip').forEach(c => c.onclick = () => {
+    qMode = c.dataset.m;
+    el.querySelectorAll('#pr-mode .chip').forEach(x => x.classList.toggle('on', x === c));
+  });
   el.querySelectorAll('#pr-durs .chip').forEach(c => c.onclick = () => {
-    duration = DURATIONS[+c.dataset.i];
-    el.querySelectorAll('#pr-durs .chip').forEach(x => x.classList.remove('on'));
-    c.classList.add('on');
+    mins = parseFloat(c.dataset.t);
+    el.querySelectorAll('#pr-durs .chip').forEach(x => x.classList.toggle('on', x === c));
+  });
+  el.querySelectorAll('#pr-words .chip').forEach(c => c.onclick = () => {
+    wordLimit = +c.dataset.w;
+    el.querySelectorAll('#pr-words .chip').forEach(x => x.classList.toggle('on', x === c));
   });
   el.querySelector('#pr-random').onclick = () => startRandom();
   el.querySelector('#pr-pick').onclick = () => pickTheme();
@@ -61,6 +107,14 @@ function themesOf(doc) {
 
 async function startRandom() {
   const doc = await DB.getDoc(el.querySelector('#pr-doc').value);
+  if (qMode === 'questions') {
+    const qs = extractQuestions(doc);
+    if (qs.length) {
+      const qText = qs[Math.floor(Math.random() * qs.length)];
+      return start(bestTheme(doc, qText), qText);
+    }
+    toast('No question bank found in this document — using a theme instead');
+  }
   const ths = themesOf(doc);
   if (!ths.length) return;
   start(ths[Math.floor(Math.random() * ths.length)]);
@@ -68,19 +122,34 @@ async function startRandom() {
 
 async function pickTheme() {
   const doc = await DB.getDoc(el.querySelector('#pr-doc').value);
+  if (qMode === 'questions') {
+    const qs = extractQuestions(doc);
+    if (qs.length) {
+      sheet(`<h3>Pick a question (${qs.length} found)</h3>` + qs.map((q, i) =>
+        `<div class="drawer-item" data-i="${i}"><span class="n">${i + 1}</span><span>${escapeHtml(q)}</span></div>`).join(''),
+        (root) => root.querySelectorAll('.drawer-item').forEach(n => n.onclick = () => {
+          closeSheet(); start(bestTheme(doc, qs[+n.dataset.i]), qs[+n.dataset.i]);
+        }));
+      return;
+    }
+    toast('No question bank found in this document — showing themes');
+  }
   const ths = themesOf(doc);
   sheet(`<h3>Pick a theme</h3>` + ths.map((t, i) =>
     `<div class="drawer-item" data-i="${i}"><span class="n">${i + 1}</span><span>${escapeHtml(cleanTitle(t.title))}</span></div>`).join(''),
     (root) => root.querySelectorAll('.drawer-item').forEach(n => n.onclick = () => { closeSheet(); start(ths[+n.dataset.i]); }));
 }
 
-function start(theme) {
+function start(theme, questionText) {
   current = theme;
-  remaining = Math.round(duration.secs);
+  remaining = Math.round(mins * 60);
+  const qHtml = questionText
+    ? escapeHtml(questionText)
+    : `${escapeHtml(cleanTitle(theme.title))} — discuss with recent examples.`;
   el.innerHTML = `
     <div class="pad">
-      <div class="qz-ctx">${escapeHtml(cleanTitle(theme.section) || theme.section)}</div>
-      <div class="pr-q">Q. ${escapeHtml(cleanTitle(theme.title))} — discuss with recent examples. <span class="muted">(${duration.marks} marks · ≈${duration.words} words)</span></div>
+      <div class="qz-ctx">${escapeHtml(cleanTitle(theme.section) || theme.section || '')}</div>
+      <div class="pr-q">Q. ${qHtml} <span class="muted">(≈${wordLimit} words · ${mins} min)</span></div>
       <div class="timer" id="pr-timer">${fmt(remaining)}</div>
       <div class="row" style="justify-content:center;gap:10px;flex-wrap:wrap">
         <button class="btn danger" id="pr-quit">Quit</button>
@@ -209,7 +278,7 @@ async function revealModel() {
   stopTimer();
   const box = el.querySelector('#pr-model-out');
   if (!box || box.childElementCount) { if (box) box.scrollIntoView({ behavior: 'smooth' }); return; }
-  const limit = duration.words;
+  const limit = wordLimit;
   const best = await findUploadedModel(current);
   const ans = best ? renderUploadedModel(best, limit) : synthesizeAnswer(current, limit);
   box.innerHTML = `

@@ -65,6 +65,15 @@ async function firstRun() {
   await showView('listen');
 })();
 
+// keyboard controls: space = play/pause, ←/→ = previous/next line
+document.addEventListener('keydown', (e) => {
+  const t = e.target;
+  if (t && (/(INPUT|TEXTAREA|SELECT)/.test(t.tagName) || t.isContentEditable)) return;
+  if (e.code === 'Space') { e.preventDefault(); speech.toggle(); }
+  else if (e.code === 'ArrowRight') { e.preventDefault(); speech.next(); }
+  else if (e.code === 'ArrowLeft') { e.preventDefault(); speech.prev(); }
+});
+
 // stop speech when app is closed / hidden for long (keep playing on tab switch within app)
 window.addEventListener('pagehide', () => speech.stop());
 

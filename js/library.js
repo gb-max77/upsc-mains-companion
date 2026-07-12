@@ -1,11 +1,13 @@
-// Library — upload docx/pdf, edit (audio adapts), rename, delete, settings, seed pack
+// Library — folders, Notes/Model tabs, uploads with per-doc generation options,
+// in-app editing (audio adapts), settings, starter pack.
 import { DB, uid } from './db.js';
 import { extractLines } from './extract.js';
 import { parseStructure } from './parser.js';
 import { sheet, closeSheet, toast, escapeHtml } from './ui.js';
 import { setApiKey, getApiKey } from './ai.js';
 
-let el, onChange = () => {};
+let el, onChange = () => {}, tab = 'notes';
+const collapsed = new Set(JSON.parse(localStorage.getItem('lib-collapsed') || '[]'));
 
 export function setLibraryChangeHandler(fn) { onChange = fn; }
 
@@ -14,9 +16,34 @@ export async function mountLibrary(root) {
   await render();
 }
 
+export function suggestFolder(name) {
+  const n = name.toLowerCase();
+  if (/gs-?\s?1|geography|history|society|culture/.test(n)) return 'GS1';
+  if (/gs-?\s?2|polity|governance|ir\b|international|constitution|social justice/.test(n)) return 'GS2';
+  if (/gs-?\s?3|economy|environment|science|security|disaster/.test(n)) return 'GS3';
+  if (/gs-?\s?4|ethics|integrity|aptitude/.test(n)) return 'GS4';
+  if (/pubad|pub ad|public adm/.test(n)) return 'PubAd';
+  if (/essay/.test(n)) return 'Essay';
+  if (/model|answer/.test(n)) return 'Model Answers';
+  return 'General';
+}
+
+const folderOf = d => d.folder || suggestFolder(d.title);
+
 async function render() {
   const docs = await DB.allDocs();
   const models = await DB.allModelDocs();
+  const isNotes = tab === 'notes';
+
+  // group notes by folder
+  const folders = new Map();
+  for (const d of docs) {
+    const f = folderOf(d);
+    if (!folders.has(f)) folders.set(f, []);
+    folders.get(f).push(d);
+  }
+  const folderNames = [...folders.keys()].sort();
+
   el.innerHTML = `
     <div class="pad" style="display:flex;flex-direction:column;gap:12px">
       <div class="row">
@@ -24,39 +51,74 @@ async function render() {
         <div class="spacer"></div>
         <button class="btn sm" id="lb-settings">⚙️ Settings</button>
       </div>
-      <div id="drop" data-kind="notes">➕ <b>Add notes</b> — tap to upload .docx / .pdf / .txt<br><span class="tiny">They become audiobooks, flashcards & quizzes instantly</span></div>
-      ${docs.length === 0 ? `<button class="btn blue" id="lb-seed">⚡ Load my 8 UPSC 2026 cheat-sheets (starter pack)</button>` : ''}
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${docs.map(d => docRow(d)).join('') || '<div class="empty">Library is empty.</div>'}
+      <div class="seg">
+        <button class="seg-btn ${isNotes ? 'on' : ''}" data-tab="notes">📓 Notes (${docs.length})</button>
+        <button class="seg-btn ${!isNotes ? 'on' : ''}" data-tab="model">📝 Model Answers (${models.length})</button>
       </div>
 
-      <div class="row" style="margin-top:14px"><h2 class="vt" style="font-size:17px">📝 Model Answers</h2></div>
-      <p class="muted tiny" style="margin-top:-8px">Upload model-answer compilations here. The ✍️ Answer drill searches them for the best-matching answer to your question — and falls back to composing one from your notes.</p>
-      <div id="drop-model" data-kind="model">➕ <b>Add model answers</b> — .docx / .pdf / .txt</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${models.map(d => docRow(d)).join('') || '<div class="empty tiny" style="padding:14px">No model-answer documents yet.</div>'}
-      </div>
+      ${isNotes ? `
+        <div id="drop" data-kind="notes">➕ <b>Add notes</b> — tap to upload .docx / .pdf / .txt<br>
+          <span class="tiny">You choose what each file becomes: audio · cards · quiz · answers · diagrams</span></div>
+        ${docs.length === 0 ? `<button class="btn blue" id="lb-seed">⚡ Load my 8 UPSC 2026 cheat-sheets (starter pack)</button>` : ''}
+        ${folderNames.map(f => folderBlock(f, folders.get(f))).join('') || '<div class="empty">Library is empty.</div>'}
+      ` : `
+        <p class="muted tiny">Model-answer compilations live here, separate from your notes. The ✍️ Answer drill searches them for the best-matching answer; they never appear in Listen, Cards or Quiz.</p>
+        <div id="drop" data-kind="model">➕ <b>Add model answers</b> — .docx / .pdf / .txt</div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${models.map(d => docRow(d)).join('') || '<div class="empty tiny" style="padding:14px">No model-answer documents yet.</div>'}
+        </div>
+      `}
       <input type="file" id="lb-file" accept=".docx,.pdf,.txt,.md" multiple hidden>
     </div>`;
 
+  el.querySelectorAll('.seg-btn').forEach(b => b.onclick = async () => { tab = b.dataset.tab; await render(); });
+
   const fileInput = el.querySelector('#lb-file');
-  let uploadKind = 'notes';
-  for (const drop of el.querySelectorAll('#drop, #drop-model')) {
-    drop.onclick = () => { uploadKind = drop.dataset.kind; fileInput.click(); };
+  const drop = el.querySelector('#drop');
+  if (drop) {
+    drop.onclick = () => fileInput.click();
     drop.ondragover = e => { e.preventDefault(); drop.classList.add('hot'); };
     drop.ondragleave = () => drop.classList.remove('hot');
-    drop.ondrop = e => {
-      e.preventDefault(); drop.classList.remove('hot');
-      handleFiles(e.dataTransfer.files, drop.dataset.kind);
-    };
+    drop.ondrop = e => { e.preventDefault(); drop.classList.remove('hot'); intake(e.dataTransfer.files, drop.dataset.kind); };
+    fileInput.onchange = () => intake(fileInput.files, drop.dataset.kind);
   }
-  fileInput.onchange = () => handleFiles(fileInput.files, uploadKind);
 
   const seedBtn = el.querySelector('#lb-seed');
   if (seedBtn) seedBtn.onclick = loadSeed;
   el.querySelector('#lb-settings').onclick = showSettings;
 
-  el.querySelectorAll('[data-act]').forEach(b => b.onclick = () => action(b.dataset.act, b.dataset.id));
+  el.querySelectorAll('[data-folder-toggle]').forEach(h => h.onclick = () => {
+    const f = h.dataset.folderToggle;
+    collapsed.has(f) ? collapsed.delete(f) : collapsed.add(f);
+    localStorage.setItem('lib-collapsed', JSON.stringify([...collapsed]));
+    render();
+  });
+  el.querySelectorAll('[data-act]').forEach(b => b.onclick = (e) => { e.stopPropagation(); action(b.dataset.act, b.dataset.id); });
+}
+
+function folderBlock(name, items) {
+  const closed = collapsed.has(name);
+  return `
+    <div class="folder">
+      <div class="folder-head" data-folder-toggle="${escapeHtml(name)}">
+        <span>${closed ? '▸' : '▾'} 📁 ${escapeHtml(name)}</span><span class="tiny muted">${items.length}</span>
+      </div>
+      ${closed ? '' : `<div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">${items.map(d => docRow(d)).join('')}</div>`}
+    </div>`;
+}
+
+function usesBadges(d) {
+  const u = d.uses || {};
+  const on = k => u[k] !== false;
+  const parts = [];
+  if (d.kind !== 'model') {
+    if (on('audio')) parts.push('🎧');
+    if (on('cards')) parts.push('🃏');
+    if (on('quiz')) parts.push('🧠');
+    if (on('answer')) parts.push('✍️');
+    if (on('diagrams')) parts.push('📊');
+  }
+  return parts.join(' ');
 }
 
 function docRow(d) {
@@ -65,34 +127,34 @@ function docRow(d) {
   return `
     <div class="card-ui doc-item">
       <div>
-        <div class="doc-title">${escapeHtml(d.title)}</div>
-        <div class="doc-meta">${d.lines.length} lines · ~${(words / 1000).toFixed(1)}k words · ${themes || '—'} themes · ~${Math.round(words / 150)} min listen</div>
+        <div class="doc-title">${escapeHtml(d.title)} <span class="tiny">${usesBadges(d)}</span></div>
+        <div class="doc-meta">${d.lines.length} lines · ~${(words / 1000).toFixed(1)}k words · ${themes || '—'} themes${d.kind === 'model' ? ' · model answers' : ''}</div>
       </div>
       <div class="row">
         <button class="btn sm" data-act="edit" data-id="${d.id}">✏️ Edit</button>
-        <button class="btn sm" data-act="rename" data-id="${d.id}">Rename</button>
+        <button class="btn sm" data-act="opts" data-id="${d.id}">⚙︎ Options</button>
         <div class="spacer"></div>
         <button class="btn sm danger" data-act="del" data-id="${d.id}">Delete</button>
       </div>
     </div>`;
 }
 
-async function handleFiles(files, kind = 'notes') {
-  for (const f of files) {
+// ---------- upload intake with options ----------
+async function intake(files, kind) {
+  const list = [...files];
+  if (!list.length) return;
+  for (const f of list) {
     try {
       toast(`Reading ${f.name}…`);
       const lines = await extractLines(f);
       if (!lines.length) throw new Error('No text found in file');
-      const doc = {
-        id: uid(),
-        kind,
-        title: f.name.replace(/\.(docx|pdf|txt|md)$/i, '').replace(/[_-]+/g, ' '),
-        filename: f.name,
-        createdAt: Date.now(),
-        lines,
-      };
-      await DB.putDoc(doc);
-      toast(`Added "${doc.title}" ${kind === 'model' ? '(model answers) ' : ''}✓`);
+      const title = f.name.replace(/\.(docx|pdf|txt|md)$/i, '').replace(/[_-]+/g, ' ');
+      if (kind === 'model') {
+        await DB.putDoc({ id: uid(), kind: 'model', title, filename: f.name, createdAt: Date.now(), lines });
+        toast(`Added "${title}" (model answers) ✓`);
+      } else {
+        await showUploadOptions({ title, filename: f.name, lines });
+      }
     } catch (e) {
       toast(`${f.name}: ${e.message}`, 4000);
     }
@@ -101,13 +163,114 @@ async function handleFiles(files, kind = 'notes') {
   onChange();
 }
 
+function showUploadOptions(pending) {
+  return new Promise((resolve) => {
+    const sug = suggestFolder(pending.title);
+    sheet(`
+      <h3>📥 ${escapeHtml(pending.title)}</h3>
+      <label class="tiny muted">Folder</label>
+      <input id="up-folder" value="${escapeHtml(sug)}" style="width:100%;margin:6px 0 12px" list="up-folders">
+      <datalist id="up-folders"><option>GS1</option><option>GS2</option><option>GS3</option><option>GS4</option><option>PubAd</option><option>Essay</option><option>General</option></datalist>
+      <label class="tiny muted">Narration mode (Listen tab)</label>
+      <div class="chiprow" style="margin:6px 0 12px">
+        <button class="chip" data-mode="verbatim">📜 Verbatim — word for word</button>
+        <button class="chip on" data-mode="flow">🎞 Flow — Intro → H1/H2/H3 → Way-fwd pack → Conclusion</button>
+      </div>
+      <label class="tiny muted">Generate from this document</label>
+      <div class="chiprow" style="margin:6px 0 16px;flex-wrap:wrap">
+        <button class="chip on" data-use="audio">🎧 Audio</button>
+        <button class="chip on" data-use="cards">🃏 Cards</button>
+        <button class="chip on" data-use="quiz">🧠 Quiz</button>
+        <button class="chip on" data-use="answer">✍️ Answer writing</button>
+        <button class="chip on" data-use="diagrams">📊 Diagrams</button>
+      </div>
+      <div class="row"><div class="spacer"></div><button class="btn primary" id="up-save">Add to library</button></div>
+    `, (root) => {
+      root.querySelectorAll('[data-mode]').forEach(c => c.onclick = () => {
+        root.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('on'));
+        c.classList.add('on');
+      });
+      root.querySelectorAll('[data-use]').forEach(c => c.onclick = () => c.classList.toggle('on'));
+      root.querySelector('#up-save').onclick = async () => {
+        const uses = {};
+        root.querySelectorAll('[data-use]').forEach(c => { uses[c.dataset.use] = c.classList.contains('on'); });
+        const modeChip = root.querySelector('[data-mode].on');
+        await DB.putDoc({
+          id: uid(), kind: 'notes',
+          title: pending.title, filename: pending.filename, createdAt: Date.now(),
+          folder: root.querySelector('#up-folder').value.trim() || 'General',
+          mode: modeChip ? modeChip.dataset.mode : 'verbatim',
+          uses, lines: pending.lines,
+        });
+        closeSheet();
+        toast(`Added "${pending.title}" ✓`);
+        resolve();
+      };
+    });
+  });
+}
+
+// per-doc options editor (folder / mode / uses) for existing docs
+function showDocOptions(d) {
+  const u = d.uses || {};
+  const on = k => u[k] !== false;
+  sheet(`
+    <h3>⚙︎ ${escapeHtml(d.title)}</h3>
+    <label class="tiny muted">Title</label>
+    <input id="op-title" value="${escapeHtml(d.title)}" style="width:100%;margin:6px 0 12px">
+    ${d.kind === 'model' ? '' : `
+    <label class="tiny muted">Folder</label>
+    <input id="op-folder" value="${escapeHtml(folderOf(d))}" style="width:100%;margin:6px 0 12px" list="up-folders">
+    <datalist id="up-folders"><option>GS1</option><option>GS2</option><option>GS3</option><option>GS4</option><option>PubAd</option><option>Essay</option><option>General</option></datalist>
+    <label class="tiny muted">Default narration mode</label>
+    <div class="chiprow" style="margin:6px 0 12px">
+      <button class="chip ${(d.mode || 'verbatim') === 'verbatim' ? 'on' : ''}" data-mode="verbatim">📜 Verbatim</button>
+      <button class="chip ${d.mode === 'flow' ? 'on' : ''}" data-mode="flow">🎞 Flow</button>
+    </div>
+    <label class="tiny muted">Generates</label>
+    <div class="chiprow" style="margin:6px 0 16px;flex-wrap:wrap">
+      <button class="chip ${on('audio') ? 'on' : ''}" data-use="audio">🎧 Audio</button>
+      <button class="chip ${on('cards') ? 'on' : ''}" data-use="cards">🃏 Cards</button>
+      <button class="chip ${on('quiz') ? 'on' : ''}" data-use="quiz">🧠 Quiz</button>
+      <button class="chip ${on('answer') ? 'on' : ''}" data-use="answer">✍️ Answer</button>
+      <button class="chip ${on('diagrams') ? 'on' : ''}" data-use="diagrams">📊 Diagrams</button>
+    </div>`}
+    <div class="row"><div class="spacer"></div><button class="btn primary" id="op-save">Save</button></div>
+  `, (root) => {
+    root.querySelectorAll('[data-mode]').forEach(c => c.onclick = () => {
+      root.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('on'));
+      c.classList.add('on');
+    });
+    root.querySelectorAll('[data-use]').forEach(c => c.onclick = () => c.classList.toggle('on'));
+    root.querySelector('#op-save').onclick = async () => {
+      d.title = root.querySelector('#op-title').value.trim() || d.title;
+      if (d.kind !== 'model') {
+        d.folder = root.querySelector('#op-folder').value.trim() || 'General';
+        const mc = root.querySelector('[data-mode].on');
+        if (mc) d.mode = mc.dataset.mode;
+        const uses = {};
+        root.querySelectorAll('[data-use]').forEach(c => { uses[c.dataset.use] = c.classList.contains('on'); });
+        d.uses = uses;
+      }
+      await DB.putDoc(d);
+      closeSheet();
+      toast('Saved ✓');
+      await render();
+      onChange();
+    };
+  });
+}
+
 async function loadSeed() {
   try {
     toast('Loading starter pack…');
     const res = await fetch('data/seed.json');
     const seedDocs = await res.json();
     for (const s of seedDocs) {
-      await DB.putDoc({ id: uid(), title: s.title, filename: s.filename, createdAt: Date.now(), lines: s.lines });
+      await DB.putDoc({
+        id: uid(), title: s.title, filename: s.filename, createdAt: Date.now(),
+        folder: suggestFolder(s.title), lines: s.lines,
+      });
     }
     await DB.setKV('seed-loaded', true);
     toast(`Loaded ${seedDocs.length} documents ✓`);
@@ -119,19 +282,18 @@ async function loadSeed() {
 }
 
 async function action(act, id) {
-  const doc = await DB.getDoc(id);
-  if (!doc) return;
+  const d = await DB.getDoc(id);
+  if (!d) return;
   if (act === 'del') {
-    if (!confirm(`Delete "${doc.title}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete "${d.title}"? This cannot be undone.`)) return;
     await DB.delDoc(id);
     toast('Deleted');
     await render();
     onChange();
-  } else if (act === 'rename') {
-    const t = prompt('New title', doc.title);
-    if (t && t.trim()) { doc.title = t.trim(); await DB.putDoc(doc); await render(); onChange(); }
+  } else if (act === 'opts') {
+    showDocOptions(d);
   } else if (act === 'edit') {
-    showEditor(doc);
+    showEditor(d);
   }
 }
 
@@ -151,7 +313,7 @@ function showEditor(doc) {
       if (!lines.length) { toast('Document cannot be empty'); return; }
       doc.lines = lines;
       await DB.putDoc(doc);
-      await DB.setKV('aicards:' + doc.id, null); // stale AI cards
+      await DB.setKV('aicards:' + doc.id, null);
       closeSheet();
       toast('Saved — audio & cards updated ✓');
       await render();
@@ -166,6 +328,7 @@ function showSettings() {
     <label class="tiny muted">Anthropic API key (optional — enables ✨ AI card polish)</label>
     <input type="password" id="st-key" placeholder="sk-ant-…" value="${escapeHtml(getApiKey())}" style="width:100%;margin:6px 0 4px">
     <p class="muted tiny" style="margin-bottom:14px">Stored only in this browser. Get one at console.anthropic.com.</p>
+    <p class="muted tiny" style="margin-bottom:14px">⌨️ Shortcuts: <b>Space</b> play/pause · <b>←/→</b> previous / next line</p>
     <div class="row">
       <button class="btn danger sm" id="st-reset">Reset all app data</button>
       <div class="spacer"></div>
