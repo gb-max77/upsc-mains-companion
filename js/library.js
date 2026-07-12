@@ -6,8 +6,11 @@ import { parseStructure } from './parser.js';
 import { sheet, closeSheet, toast, escapeHtml } from './ui.js';
 import { setApiKey, getApiKey, setGeminiKey, getGeminiKey } from './ai.js';
 
-let el, onChange = () => {}, tab = 'notes';
+let el, onChange = () => {}, tab = 'notes', notesSub = 'full';
 const collapsed = new Set(JSON.parse(localStorage.getItem('lib-collapsed') || '[]'));
+
+// fixed, predictable paper order — not alphabetical
+const FOLDER_ORDER = ['GS1', 'GS2', 'GS3', 'GS4', 'PubAd', 'Essay', 'General'];
 
 export function setLibraryChangeHandler(fn) { onChange = fn; }
 
@@ -46,7 +49,14 @@ function groupByFolder(items) {
     if (!folders.has(f)) folders.set(f, []);
     folders.get(f).push(d);
   }
-  return [...folders.keys()].sort().map(f => ({ name: f, items: folders.get(f) }));
+  const names = [...folders.keys()].sort((a, b) => {
+    const ia = FOLDER_ORDER.indexOf(a), ib = FOLDER_ORDER.indexOf(b);
+    if (ia === -1 && ib === -1) return a.localeCompare(b);
+    if (ia === -1) return 1;
+    if (ib === -1) return -1;
+    return ia - ib;
+  });
+  return names.map(f => ({ name: f, items: folders.get(f) }));
 }
 
 async function render() {
@@ -69,16 +79,23 @@ async function render() {
       </div>
 
       ${isNotes ? `
-        <div id="drop" data-kind="notes">➕ <b>Add notes</b> — tap to upload .docx / .pdf / .txt<br>
-          <span class="tiny">You choose what each file becomes: audio · cards · quiz · answers · diagrams</span></div>
         ${docs.length === 0 ? `<button class="btn blue" id="lb-seed">⚡ Load my 8 UPSC 2026 cheat-sheets (starter pack)</button>` : ''}
-        <div class="cat-head">📖 Full Notes <span class="tiny muted">cards · quiz · answers · diagrams</span></div>
-        ${groupByFolder(fullNotes).map(g => folderBlock(g.name, g.items)).join('') || '<div class="empty tiny" style="padding:10px">None yet.</div>'}
-        <div class="cat-head">🎙 Audio Files <span class="tiny muted">flow audiobooks</span></div>
-        ${groupByFolder(audioFiles).map(g => folderBlock('🎙 ' + g.name, g.items)).join('') || '<div class="empty tiny" style="padding:10px">None yet — upload flow-audio notes and pick "Audio file".</div>'}
+        <div class="seg" id="notes-sub-seg">
+          <button class="seg-btn ${notesSub === 'full' ? 'on' : ''}" data-sub="full">📖 Full Notes (${fullNotes.length})</button>
+          <button class="seg-btn ${notesSub === 'audio' ? 'on' : ''}" data-sub="audio">🎙 Audio Files (${audioFiles.length})</button>
+        </div>
+        ${notesSub === 'full' ? `
+          <div id="drop-full" class="drop-zone" data-kind="notes" data-cat="full">➕ <b>Add Full Notes</b> — drop or tap to upload .docx / .pdf / .txt<br>
+            <span class="tiny">Becomes cards · quiz · answers · diagrams</span></div>
+          ${groupByFolder(fullNotes).map(g => folderBlock(g.name, g.items)).join('') || '<div class="empty tiny" style="padding:10px">None yet.</div>'}
+        ` : `
+          <div id="drop-audio" class="drop-zone" data-kind="notes" data-cat="audio">➕ <b>Add Audio Files</b> — drop or tap to upload .docx / .pdf / .txt<br>
+            <span class="tiny">Becomes a Flow-mode audiobook</span></div>
+          ${groupByFolder(audioFiles).map(g => folderBlock(g.name, g.items)).join('') || '<div class="empty tiny" style="padding:10px">None yet.</div>'}
+        `}
       ` : `
         <p class="muted tiny">Your answer-writing brain: model answers, toppers' copies, value-addition material, current-affairs compilations. The ✍️ Answer drill mines these files for matching model answers and value-addition points; they never appear in Listen, Cards or Quiz.</p>
-        <div id="drop" data-kind="model">➕ <b>Add to Knowledge Bank</b> — .docx / .pdf / .txt</div>
+        <div id="drop-model" class="drop-zone" data-kind="model">➕ <b>Add to Knowledge Bank</b> — .docx / .pdf / .txt</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${models.map(d => docRow(d)).join('') || '<div class="empty tiny" style="padding:14px">No model-answer documents yet.</div>'}
         </div>
@@ -86,17 +103,21 @@ async function render() {
       <input type="file" id="lb-file" accept=".docx,.pdf,.txt,.md" multiple hidden>
     </div>`;
 
-  el.querySelectorAll('.seg-btn').forEach(b => b.onclick = async () => { tab = b.dataset.tab; await render(); });
+  el.querySelectorAll('.seg:not(#notes-sub-seg) > .seg-btn').forEach(b => b.onclick = async () => { tab = b.dataset.tab; await render(); });
+  el.querySelectorAll('#notes-sub-seg .seg-btn').forEach(b => b.onclick = async () => { notesSub = b.dataset.sub; await render(); });
 
   const fileInput = el.querySelector('#lb-file');
-  const drop = el.querySelector('#drop');
-  if (drop) {
-    drop.onclick = () => fileInput.click();
+  let activeDropKind = 'notes', activeDropCat = 'full';
+  el.querySelectorAll('.drop-zone').forEach(drop => {
+    drop.onclick = () => { activeDropKind = drop.dataset.kind; activeDropCat = drop.dataset.cat || 'full'; fileInput.click(); };
     drop.ondragover = e => { e.preventDefault(); drop.classList.add('hot'); };
     drop.ondragleave = () => drop.classList.remove('hot');
-    drop.ondrop = e => { e.preventDefault(); drop.classList.remove('hot'); intake(e.dataTransfer.files, drop.dataset.kind); };
-    fileInput.onchange = () => intake(fileInput.files, drop.dataset.kind);
-  }
+    drop.ondrop = e => {
+      e.preventDefault(); drop.classList.remove('hot');
+      intake(e.dataTransfer.files, drop.dataset.kind, drop.dataset.cat || 'full');
+    };
+  });
+  fileInput.onchange = () => intake(fileInput.files, activeDropKind, activeDropCat);
 
   const seedBtn = el.querySelector('#lb-seed');
   if (seedBtn) seedBtn.onclick = loadSeed;
@@ -154,8 +175,14 @@ function docRow(d) {
     </div>`;
 }
 
+function folderDatalist() {
+  return `<datalist id="up-folders">${FOLDER_ORDER.map(f => `<option>${f}</option>`).join('')}</datalist>`;
+}
+
 // ---------- upload intake with options ----------
-async function intake(files, kind) {
+// category is pre-decided by which drop zone received the file — no more
+// "what is this file?" question, just folder + mode + uses (still editable)
+async function intake(files, kind, category = 'full') {
   const list = [...files];
   if (!list.length) return;
   for (const f of list) {
@@ -166,9 +193,9 @@ async function intake(files, kind) {
       const title = f.name.replace(/\.(docx|pdf|txt|md)$/i, '').replace(/[_-]+/g, ' ');
       if (kind === 'model') {
         await DB.putDoc({ id: uid(), kind: 'model', title, filename: f.name, createdAt: Date.now(), lines });
-        toast(`Added "${title}" (model answers) ✓`);
+        toast(`Added "${title}" to Knowledge Bank ✓`);
       } else {
-        await showUploadOptions({ title, filename: f.name, lines });
+        await showUploadOptions({ title, filename: f.name, lines, category });
       }
     } catch (e) {
       toast(`${f.name}: ${e.message}`, 4000);
@@ -181,43 +208,29 @@ async function intake(files, kind) {
 function showUploadOptions(pending) {
   return new Promise((resolve) => {
     const sug = suggestFolder(pending.title);
-    const sugCat = /audio|flow/i.test(pending.title + ' ' + pending.filename) ? 'audio' : 'full';
+    const cat = pending.category;
+    const USE_DEFS = [['audio', '🎧 Audio'], ['cards', '🃏 Cards'], ['quiz', '🧠 Quiz'], ['answer', '✍️ Answer writing'], ['diagrams', '📊 Diagrams']];
+    const preset = cat === 'audio'
+      ? { audio: true, cards: false, quiz: false, answer: false, diagrams: false }
+      : { audio: false, cards: true, quiz: true, answer: true, diagrams: true };
     sheet(`
-      <h3>📥 ${escapeHtml(pending.title)}</h3>
-      <label class="tiny muted">What is this file?</label>
-      <div class="chiprow" style="margin:6px 0 12px">
-        <button class="chip ${sugCat === 'full' ? 'on' : ''}" data-cat="full">📖 Full notes — cards · quiz · answers · diagrams</button>
-        <button class="chip ${sugCat === 'audio' ? 'on' : ''}" data-cat="audio">🎙 Audio file — flow audiobook</button>
-      </div>
+      <h3>${cat === 'audio' ? '🎙' : '📖'} ${escapeHtml(pending.title)}</h3>
+      <p class="muted tiny" style="margin-bottom:12px">${cat === 'audio' ? 'Adding to Audio Files — narrated as a Flow audiobook.' : 'Adding to Full Notes — generates cards, quiz, answers & diagrams.'}</p>
       <label class="tiny muted">Folder</label>
       <input id="up-folder" value="${escapeHtml(sug)}" style="width:100%;margin:6px 0 12px" list="up-folders">
-      <datalist id="up-folders"><option>GS1</option><option>GS2</option><option>GS3</option><option>GS4</option><option>PubAd</option><option>Essay</option><option>General</option></datalist>
+      ${folderDatalist()}
       <label class="tiny muted">Narration mode (Listen tab)</label>
       <div class="chiprow" style="margin:6px 0 12px">
-        <button class="chip ${sugCat === 'audio' ? '' : 'on'}" data-mode="verbatim">📜 Verbatim</button>
-        <button class="chip ${sugCat === 'audio' ? 'on' : ''}" data-mode="flow">🎞 Flow — Intro → H1/H2/H3 → Way-fwd → Conclusion</button>
+        <button class="chip ${cat === 'audio' ? '' : 'on'}" data-mode="verbatim">📜 Verbatim</button>
+        <button class="chip ${cat === 'audio' ? 'on' : ''}" data-mode="flow">🎞 Flow — Intro → H1/H2/H3 → Way-fwd → Conclusion</button>
       </div>
       <label class="tiny muted">Generate from this document</label>
-      <div class="chiprow" id="up-uses" style="margin:6px 0 16px;flex-wrap:wrap"></div>
+      <div class="chiprow" id="up-uses" style="margin:6px 0 16px;flex-wrap:wrap">
+        ${USE_DEFS.map(([k, label]) => `<button class="chip ${preset[k] ? 'on' : ''}" data-use="${k}">${label}</button>`).join('')}
+      </div>
       <div class="row"><div class="spacer"></div><button class="btn primary" id="up-save">Add to library</button></div>
     `, (root) => {
-      const USE_DEFS = [['audio', '🎧 Audio'], ['cards', '🃏 Cards'], ['quiz', '🧠 Quiz'], ['answer', '✍️ Answer writing'], ['diagrams', '📊 Diagrams']];
-      const applyCat = (cat) => {
-        // intelligent presets per your workflow — still editable
-        const preset = cat === 'audio'
-          ? { audio: true, cards: false, quiz: false, answer: false, diagrams: false }
-          : { audio: false, cards: true, quiz: true, answer: true, diagrams: true };
-        root.querySelector('#up-uses').innerHTML = USE_DEFS.map(([k, label]) =>
-          `<button class="chip ${preset[k] ? 'on' : ''}" data-use="${k}">${label}</button>`).join('');
-        root.querySelectorAll('[data-use]').forEach(c => c.onclick = () => c.classList.toggle('on'));
-        root.querySelectorAll('[data-mode]').forEach(x =>
-          x.classList.toggle('on', x.dataset.mode === (cat === 'audio' ? 'flow' : 'verbatim')));
-      };
-      applyCat(sugCat);
-      root.querySelectorAll('[data-cat]').forEach(c => c.onclick = () => {
-        root.querySelectorAll('[data-cat]').forEach(x => x.classList.toggle('on', x === c));
-        applyCat(c.dataset.cat);
-      });
+      root.querySelectorAll('[data-use]').forEach(c => c.onclick = () => c.classList.toggle('on'));
       root.querySelectorAll('[data-mode]').forEach(c => c.onclick = () => {
         root.querySelectorAll('[data-mode]').forEach(x => x.classList.remove('on'));
         c.classList.add('on');
@@ -226,10 +239,8 @@ function showUploadOptions(pending) {
         const uses = {};
         root.querySelectorAll('[data-use]').forEach(c => { uses[c.dataset.use] = c.classList.contains('on'); });
         const modeChip = root.querySelector('[data-mode].on');
-        const catChip = root.querySelector('[data-cat].on');
         await DB.putDoc({
-          id: uid(), kind: 'notes',
-          category: catChip ? catChip.dataset.cat : 'full',
+          id: uid(), kind: 'notes', category: cat,
           title: pending.title, filename: pending.filename, createdAt: Date.now(),
           folder: root.querySelector('#up-folder').value.trim() || 'General',
           mode: modeChip ? modeChip.dataset.mode : 'verbatim',
@@ -259,7 +270,7 @@ function showDocOptions(d) {
     </div>
     <label class="tiny muted">Folder</label>
     <input id="op-folder" value="${escapeHtml(folderOf(d))}" style="width:100%;margin:6px 0 12px" list="up-folders">
-    <datalist id="up-folders"><option>GS1</option><option>GS2</option><option>GS3</option><option>GS4</option><option>PubAd</option><option>Essay</option><option>General</option></datalist>
+    ${folderDatalist()}
     <label class="tiny muted">Default narration mode</label>
     <div class="chiprow" style="margin:6px 0 12px">
       <button class="chip ${(d.mode || 'verbatim') === 'verbatim' ? 'on' : ''}" data-mode="verbatim">📜 Verbatim</button>

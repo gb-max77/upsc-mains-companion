@@ -125,6 +125,8 @@ export function buildCardsForDoc(doc) {
 
 let subTab = 'cards';
 
+let panelOpen = false;
+
 export async function mountCards(root) {
   el = root;
   el.innerHTML = `
@@ -133,18 +135,30 @@ export async function mountCards(root) {
         <button class="seg-btn on" data-sub="cards">🃏 Cards</button>
         <button class="seg-btn" data-sub="diagrams">📊 Diagrams</button>
       </div>
-      <div class="chiprow" id="cd-chips"></div>
+      <button class="dd-toggle" id="cd-filters-btn">
+        <span id="cd-filters-label">🎛 Options</span><span class="dd-arrow">▾</span>
+      </button>
+      <div id="cd-filters" class="dd-panel" style="display:none"></div>
     </div>
     <div id="reel"></div>
     <div id="diagrams" style="display:none;flex:1;overflow-y:auto"></div>`;
+  const syncSubtabVisibility = () => {
+    el.querySelector('#reel').style.display = subTab === 'cards' ? '' : 'none';
+    el.querySelector('#cd-filters-btn').style.display = subTab === 'cards' ? '' : 'none';
+    el.querySelector('#cd-filters').style.display = subTab === 'cards' && panelOpen ? '' : 'none';
+    el.querySelector('#diagrams').style.display = subTab === 'diagrams' ? '' : 'none';
+  };
   el.querySelectorAll('[data-sub]').forEach(b => b.onclick = async () => {
     subTab = b.dataset.sub;
     el.querySelectorAll('[data-sub]').forEach(x => x.classList.toggle('on', x === b));
-    el.querySelector('#reel').style.display = subTab === 'cards' ? '' : 'none';
-    el.querySelector('#cd-chips').style.display = subTab === 'cards' ? '' : 'none';
-    el.querySelector('#diagrams').style.display = subTab === 'diagrams' ? '' : 'none';
+    syncSubtabVisibility();
     if (subTab === 'diagrams') await renderDiagramsView();
   });
+  el.querySelector('#cd-filters-btn').onclick = () => {
+    panelOpen = !panelOpen;
+    el.querySelector('.dd-arrow').textContent = panelOpen ? '▴' : '▾';
+    syncSubtabVisibility();
+  };
   await rebuild();
 }
 
@@ -206,21 +220,32 @@ async function renderDiagramsView() {
 function shortTheme(t) { return t.length > 34 ? t.slice(0, 33) + '…' : t; }
 
 function renderChips(docs) {
-  const chips = el.querySelector('#cd-chips');
-  const docChips = [`<button class="chip ${filterDoc === 'all' ? 'on' : ''}" data-doc="all">All (${allCards.length})</button>`]
-    .concat(docs.map(d => {
-      const n = allCards.filter(c => c.docId === d.id).length;
-      return `<button class="chip ${filterDoc === d.id ? 'on' : ''}" data-doc="${d.id}">${escapeHtml(shortTitle(d.title))} (${n})</button>`;
-    }));
-  chips.innerHTML =
-    `<button class="chip ${shuffled ? 'on' : ''}" id="cd-shuffle">🔀 Shuffle</button>
-     <button class="chip ${recall ? 'on' : ''}" id="cd-recall">🫣 Recall mode</button>
-     <button class="chip" id="cd-ai">✨ AI polish</button>` + docChips.join('');
-  chips.querySelector('#cd-shuffle').onclick = () => { shuffled = !shuffled; applyFilter(); };
-  chips.querySelector('#cd-recall').onclick = () => { recall = !recall; renderChips(docsCache); renderReel(); };
-  chips.querySelector('#cd-ai').onclick = () => runAiPolish();
-  chips.querySelectorAll('[data-doc]').forEach(c => c.onclick = () => { filterDoc = c.dataset.doc; applyFilter(); });
   docsCache = docs;
+  // compact summary always visible on the toggle button
+  const curLabel = filterDoc === 'all' ? 'All' : shortTitle((docs.find(d => d.id === filterDoc) || {}).title || 'All');
+  const btnLabel = el.querySelector('#cd-filters-label');
+  if (btnLabel) btnLabel.innerHTML = `🎛 ${escapeHtml(curLabel)} <span class="tiny muted">(${shownCards.length || allCards.length})</span>${shuffled ? ' 🔀' : ''}${recall ? ' 🫣' : ''}`;
+
+  const panel = el.querySelector('#cd-filters');
+  if (!panel) return;
+  panel.innerHTML = `
+    <label class="tiny muted">Subject</label>
+    <select id="cd-doc-sel" style="width:100%;margin:6px 0 12px">
+      <option value="all" ${filterDoc === 'all' ? 'selected' : ''}>📚 All subjects (${allCards.length})</option>
+      ${docs.map(d => {
+        const n = allCards.filter(c => c.docId === d.id).length;
+        return `<option value="${d.id}" ${filterDoc === d.id ? 'selected' : ''}>${escapeHtml(d.title)} (${n})</option>`;
+      }).join('')}
+    </select>
+    <div class="dd-row">
+      <button class="chip ${shuffled ? 'on' : ''}" id="cd-shuffle">🔀 Shuffle</button>
+      <button class="chip ${recall ? 'on' : ''}" id="cd-recall">🫣 Recall mode</button>
+      <button class="chip" id="cd-ai">✨ AI polish</button>
+    </div>`;
+  panel.querySelector('#cd-doc-sel').onchange = (e) => { filterDoc = e.target.value; applyFilter(); };
+  panel.querySelector('#cd-shuffle').onclick = () => { shuffled = !shuffled; applyFilter(); };
+  panel.querySelector('#cd-recall').onclick = () => { recall = !recall; renderChips(docsCache); renderReel(); };
+  panel.querySelector('#cd-ai').onclick = () => runAiPolish();
 }
 let docsCache = [];
 

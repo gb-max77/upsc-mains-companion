@@ -7,6 +7,8 @@ import { sheet, closeSheet, toast } from './ui.js';
 
 let el, doc = null, lines = [], structure = null, chunks = [], mode = 'verbatim';
 let autoScroll = true, saveTimer = null;
+let wordPrefix = [], wordFrac = 0; // for the elapsed/total time estimate
+const WPM_BASE = 155; // average narration words/min at 1x speed
 
 const modeKey = id => 'mode:' + id;
 const posKey = (id, m) => `pos:${id}:${m}`;
@@ -35,7 +37,7 @@ export async function mountListen(root) {
           <button class="pb wide" id="pl-voice">🎙</button>
         </div>
       </div>
-      <div class="meta"><span class="nowline" id="pl-now"></span><span id="pl-pos"></span></div>
+      <div class="meta"><span class="nowline" id="pl-now"></span><span id="pl-time" title="elapsed / total (estimated)">0:00 / 0:00</span></div>
     </div>`;
 
   el.querySelector('#pl-doc').onchange = e => openDoc(e.target.value);
@@ -97,6 +99,7 @@ async function applyMode() {
   lines = mode === 'flow' ? flowLines(doc.lines) : doc.lines;
   structure = parseStructure(lines);
   buildChunks();
+  buildWordPrefix();
   renderModeBtn();
   renderReader();
   renderDots();
@@ -141,6 +144,29 @@ function buildChunks() {
 function chunkOf(idx) {
   for (let c = 0; c < chunks.length; c++) if (idx >= chunks[c].start && idx < chunks[c].end) return c;
   return -1;
+}
+
+// ---------- time estimate (words-so-far ÷ effective words-per-minute) ----------
+function buildWordPrefix() {
+  wordPrefix = [0];
+  let sum = 0;
+  for (const l of lines) { sum += l.split(/\s+/).filter(Boolean).length; wordPrefix.push(sum); }
+}
+
+function computeTimes() {
+  const total = wordPrefix[wordPrefix.length - 1] || 0;
+  const i = Math.max(0, Math.min(speech.idx, wordPrefix.length - 2));
+  const before = wordPrefix[i] || 0;
+  const curWords = (wordPrefix[i + 1] || before) - before;
+  const soFar = before + curWords * wordFrac;
+  const wpm = WPM_BASE * (speech.rate || 1);
+  return { elapsed: (soFar / wpm) * 60, total: (total / wpm) * 60 };
+}
+
+function fmtTime(s) {
+  s = Math.max(0, Math.round(s));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`;
 }
 
 // ---------- render ----------
@@ -191,12 +217,14 @@ function renderDots() {
 
 // ---------- speech wiring & highlight ----------
 function wireSpeech() {
-  speech.onLine = (i) => { markCurrent(i, true); updateMeta(); savePos(); };
+  speech.onLine = (i) => { wordFrac = 0; markCurrent(i, true); updateMeta(); savePos(); };
   speech.onLineDone = (i) => {
     const n = el.querySelector(`#ln-${i}`);
     if (n) n.classList.add('done');
   };
   speech.onWord = (i, s, e2, len) => {
+    wordFrac = len ? Math.min(1, s / len) : 0;
+    updateMeta();
     const n = el.querySelector(`#ln-${i}`);
     if (!n || !n.classList.contains('rl')) return;
     highlightWordAt(n, s / Math.max(len, 1));
@@ -255,7 +283,8 @@ function updateMeta() {
   if (!doc) return;
   const i = speech.idx;
   el.querySelector('#pl-prog').style.width = (100 * i / Math.max(lines.length - 1, 1)) + '%';
-  el.querySelector('#pl-pos').textContent = `${i + 1} / ${lines.length}`;
+  const { elapsed, total } = computeTimes();
+  el.querySelector('#pl-time').textContent = `${fmtTime(elapsed)} / ${fmtTime(total)}`;
   const ci = chunkOf(i);
   const th = ci >= 0 && chunks[ci].theme;
   el.querySelector('#pl-now').textContent = th ? cleanTitle(th.title) : '';
