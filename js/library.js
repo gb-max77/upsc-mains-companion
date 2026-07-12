@@ -65,7 +65,7 @@ async function render() {
       </div>
       <div class="seg">
         <button class="seg-btn ${isNotes ? 'on' : ''}" data-tab="notes">📓 Notes (${docs.length})</button>
-        <button class="seg-btn ${!isNotes ? 'on' : ''}" data-tab="model">📝 Model Answers (${models.length})</button>
+        <button class="seg-btn ${!isNotes ? 'on' : ''}" data-tab="model">🧠 Knowledge Bank (${models.length})</button>
       </div>
 
       ${isNotes ? `
@@ -77,8 +77,8 @@ async function render() {
         <div class="cat-head">🎙 Audio Files <span class="tiny muted">flow audiobooks</span></div>
         ${groupByFolder(audioFiles).map(g => folderBlock('🎙 ' + g.name, g.items)).join('') || '<div class="empty tiny" style="padding:10px">None yet — upload flow-audio notes and pick "Audio file".</div>'}
       ` : `
-        <p class="muted tiny">Model-answer compilations live here, separate from your notes. The ✍️ Answer drill searches them for the best-matching answer; they never appear in Listen, Cards or Quiz.</p>
-        <div id="drop" data-kind="model">➕ <b>Add model answers</b> — .docx / .pdf / .txt</div>
+        <p class="muted tiny">Your answer-writing brain: model answers, toppers' copies, value-addition material, current-affairs compilations. The ✍️ Answer drill mines these files for matching model answers and value-addition points; they never appear in Listen, Cards or Quiz.</p>
+        <div id="drop" data-kind="model">➕ <b>Add to Knowledge Bank</b> — .docx / .pdf / .txt</div>
         <div style="display:flex;flex-direction:column;gap:10px">
           ${models.map(d => docRow(d)).join('') || '<div class="empty tiny" style="padding:14px">No model-answer documents yet.</div>'}
         </div>

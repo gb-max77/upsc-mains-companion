@@ -39,8 +39,8 @@ export async function callGemini(prompt) {
   return text;
 }
 
-// UPSC-tuned model-answer prompt
-export function mainsAnswerPrompt(question, wordLimit, notesContext) {
+// UPSC-tuned model-answer prompt, with paper-specific tacticalities
+export function mainsAnswerPrompt(question, wordLimit, notesContext, tactics, paper) {
   return `You are a UPSC CSE Mains topper writing a high-scoring answer.
 
 QUESTION: ${question}
@@ -50,8 +50,8 @@ Write a ${wordLimit}-word answer (stay within ±10%). Structure it exactly as:
 - Body under 2-3 short headings; every point follows keyword → mechanism → named example/data/committee/case. Use specific Articles, judgments, committees, schemes and recent (2024-26) examples.
 - Way forward (2-3 crisp actionable points).
 - Conclusion (1 forward-looking line, ideally tied to a constitutional value or national goal).
-
-${notesContext ? `Base the answer STRICTLY on these notes (enrich only where a named example is missing):\n${notesContext}\n` : ''}
+${tactics ? `\nPAPER-SPECIFIC TACTICS${paper ? ` (${paper})` : ''}: ${tactics}\n` : ''}
+${notesContext ? `Base the answer STRICTLY on this material (enrich only where a named example is missing):\n${notesContext}\n` : ''}
 Output plain text. Mark headings by ending them with ':' on their own line. No markdown symbols, no preamble — start directly with the introduction.`;
 }
 

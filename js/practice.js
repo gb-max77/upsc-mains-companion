@@ -6,6 +6,37 @@ import { DB } from './db.js';
 import { parseStructure, classifyLine, cleanTitle, decorateLine } from './parser.js';
 import { escapeHtml, sheet, closeSheet, toast } from './ui.js';
 import { geminiAvailable, callGemini, mainsAnswerPrompt } from './ai.js';
+import { suggestFolder } from './library.js';
+
+// ---------- paper-specific high-scoring tacticalities ----------
+const TACTICS = {
+  GS1: 'Weave in society data (Census, NFHS-5, PLFS), name sociologists (Srinivas, Ambedkar, Xaxa) for society questions; exact chronology and named movements/art forms for history; process mechanisms and a "draw a diagram/map" cue for geography. Balance colonial, nationalist and subaltern perspectives where relevant.',
+  GS2: 'Anchor EVERY point in an Article, SC judgment, or committee (2nd ARC, Sarkaria, Punchhi, Law Commission). Cite recent constitutional developments. Way forward should quote committee recommendations, not generic advice. Maintain constitutional-morality tone; for IR, use doctrines, groupings and recent summits.',
+  GS3: 'Lead with Economic Survey/Budget/RBI data and named schemes. For environment cite conventions (UNFCCC, CBD, Ramsar) and CPCB/SoE data; for security use doctrine and named operations; for S&T name missions. Always balance growth vs equity/sustainability and end with a scheme-linked way forward.',
+  GS4: 'Define the ethical concept in one line first, attribute it (Aristotle, Kant, Mill, Gandhi, Kohlberg), give a lived administrative example or case study, quote a thinker mid-answer, and close by synthesising the value with public service. Use simple diagrams cue (value-conflict matrix) where apt.',
+  PubAd: 'Cite thinkers by theory (Weber-bureaucracy, Simon-decision making, Riggs-ecology, Dwivedi-ethics), link Paper-1 theory to Indian administrative practice and vice-versa, quote 2nd ARC and NITI reports, and use committee-vs-practice tension as the analytical spine.',
+  Essay: 'Open with an anecdote or striking fact, sweep dimensions (political, economic, social, technological, environmental, ethical), transition smoothly between paras, embed 2-3 quotes, keep a balanced argumentative arc, and close philosophically with a forward vision.',
+  General: 'Use the keyword → mechanism → named example spine on every point; quantify with data wherever possible; end with an optimistic, forward-looking conclusion.',
+};
+const paperOf = d => {
+  const p = d.folder || suggestFolder(d.title);
+  return TACTICS[p] ? p : 'General';
+};
+
+// mine the Knowledge Bank for value-addition lines matching the question
+async function bankSnippets(question, n = 6) {
+  const models = await DB.allModelDocs();
+  const q = tokens(question);
+  const scored = [];
+  for (const m of models) {
+    for (const l of m.lines) {
+      if (l.length < 40 || l.length > 500) continue;
+      const s = overlap(q, tokens(l));
+      if (s >= 0.25) scored.push({ l, s });
+    }
+  }
+  return scored.sort((a, b) => b.s - a.s).slice(0, n).map(x => x.l);
+}
 
 // time and word limit are independent — you pick each
 const TIMES = [7.5, 9.5];                 // minutes
@@ -246,6 +277,7 @@ async function findUploadedModel(theme) {
     const st = parseStructure(m.lines);
     for (const s of st.sections) {
       for (const t of s.themes) {
+        if (t.pseudo) continue; // unstructured stretches feed bankSnippets, not full answers
         const head = m.lines.slice(t.start, Math.min(t.start + 3, t.end)).join(' ');
         const score = overlap(q, tokens(cleanTitle(t.title) + ' ' + head));
         if (score > bestScore) { bestScore = score; best = { doc: m, theme: t, score }; }
@@ -313,9 +345,17 @@ function renderUploadedModel(best, wordLimit) {
   return { html: parts.join(''), words: used, source: `from “${doc.title}”` };
 }
 
-function notesAnswer(limit) {
-  return findUploadedModel(current).then(best =>
-    best ? renderUploadedModel(best, limit) : synthesizeAnswer(current, limit));
+async function notesAnswer(limit) {
+  const best = await findUploadedModel(current);
+  const ans = best ? renderUploadedModel(best, limit) : synthesizeAnswer(current, limit);
+  // enrich with value-addition lines mined from the Knowledge Bank
+  const snips = await bankSnippets(currentQ, 4);
+  if (snips.length && !best) {
+    ans.html += `<p class="ma-h">Value addition — Knowledge Bank</p>`
+      + snips.map(s => `<p class="ma-pt">– ${decorateLine(s)}</p>`).join('');
+    ans.source += ' + knowledge bank';
+  }
+  return ans;
 }
 
 // light formatting for Gemini plain-text output: heading lines end with ':'
@@ -330,15 +370,18 @@ function formatAiAnswer(text) {
 
 async function geminiAnswer(limit, withNotes) {
   if (!geminiAvailable()) throw new Error('Add your Gemini API key in Library ▸ Settings (free at aistudio.google.com/apikey)');
+  const paper = paperOf(current.doc);
   let notesCtx = null;
   if (withNotes) {
     notesCtx = current.doc.lines.slice(current.start, current.end).join('\n').slice(0, 12000);
+    const snips = await bankSnippets(currentQ, 6);
+    if (snips.length) notesCtx += '\n\nVALUE-ADDITION FROM KNOWLEDGE BANK:\n' + snips.join('\n');
   }
-  const text = await callGemini(mainsAnswerPrompt(currentQ, limit, notesCtx));
+  const text = await callGemini(mainsAnswerPrompt(currentQ, limit, notesCtx, TACTICS[paper], paper));
   return {
     html: formatAiAnswer(text),
     words: text.split(/\s+/).filter(Boolean).length,
-    source: withNotes ? 'Gemini grounded in your notes' : 'Gemini',
+    source: (withNotes ? 'Gemini + notes + knowledge bank' : 'Gemini') + ` · ${paper} tactics`,
   };
 }
 
