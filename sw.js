@@ -1,4 +1,4 @@
-const CACHE = 'upsc-companion-v8';
+const CACHE = 'upsc-companion-v9';
 const ASSETS = [
   './', 'index.html', 'css/style.css',
   'js/app.js', 'js/db.js', 'js/parser.js', 'js/extract.js', 'js/tts.js',

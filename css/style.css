@@ -216,8 +216,6 @@ h2.vt{font-size:20px;font-weight:800;margin-bottom:4px}
 .rc-count{font-variant-numeric:tabular-nums}
 
 /* =============== DIAGRAMS =============== */
-.dg-doc{border:1px solid var(--line);border-radius:var(--radius);background:var(--bg2);padding:12px 14px;margin-bottom:10px}
-.dg-doc summary{font-weight:800;font-size:14px;cursor:pointer}
 .dg-theme{margin:14px 0 4px}
 .dg-theme-title{font-weight:800;color:var(--acc);font-size:13.5px;margin-bottom:8px}
 .dg{margin:0 0 14px}

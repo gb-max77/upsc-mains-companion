@@ -3,7 +3,7 @@
 import { DB } from './db.js';
 import { parseStructure, flowLines, classifyLine, cleanTitle, titleMeta, decorateLine } from './parser.js';
 import { speech, SPEEDS } from './tts.js';
-import { sheet, closeSheet, toast } from './ui.js';
+import { sheet, closeSheet, toast, escapeHtml } from './ui.js';
 
 let el, doc = null, lines = [], structure = null, chunks = [], mode = 'verbatim';
 let autoScroll = true, saveTimer = null;
@@ -403,5 +403,3 @@ async function showAllThemesSheet() {
     });
   });
 }
-
-function escapeHtml(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }

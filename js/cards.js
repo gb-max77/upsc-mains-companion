@@ -251,7 +251,7 @@ function renderChips(docs) {
 }
 let docsCache = [];
 
-function shortTitle(t) { return t.replace(/·/g, '·').split('·').map(s => s.trim()).slice(-1)[0] || t; }
+function shortTitle(t) { return t.split('·').map(s => s.trim()).slice(-1)[0] || t; }
 
 function applyFilter() {
   shownCards = filterDoc === 'all' ? allCards.slice() : allCards.filter(c => c.docId === filterDoc);

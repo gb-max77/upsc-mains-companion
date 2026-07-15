@@ -2,7 +2,7 @@
 // Engine (cross-document analysis). One pattern set so both stay in sync.
 // Each pattern is typed so a passage mixes fact KINDS (a case + a year + a
 // committee) instead of four years. Order = blanking/analysis priority.
-export const ENTITY_PATTERNS = [
+const ENTITY_PATTERNS = [
   // keyword lead-ins — the "write this" token that opens each point
   { t: 'keyword', re: /(?:^|·\s+)([A-Z][^:·—]{2,42}?):\s/g, group: 1 },
   { t: 'case', re: /\b[A-Z][A-Za-z.'']+(?:\s[A-Z][A-Za-z.'']+){0,3}\s(?:v\.?|vs\.?)\s[A-Z][A-Za-z.'']+/g },

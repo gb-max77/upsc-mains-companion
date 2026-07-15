@@ -11,7 +11,7 @@ import { categoryOf } from './taxonomy.js';
 
 let indexCache = null; // { crossRefs: {norm: [{docId,docTitle,theme,type,text}]}, stats }
 
-export async function analyzeDoc(doc) {
+async function analyzeDoc(doc) {
   const { sections } = parseStructure(doc.lines);
   const entities = [];
   let themeCount = 0;

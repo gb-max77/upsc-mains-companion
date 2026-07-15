@@ -76,7 +76,7 @@ async function ensureKnowledgeEngine() {
 })();
 
 // display preferences (theme / reader size) — applied before first paint
-export function applyDisplayPrefs() {
+function applyDisplayPrefs() {
   const root = document.documentElement;
   root.dataset.theme = localStorage.getItem('ui-theme') || 'midnight';
   root.dataset.rsize = localStorage.getItem('ui-rsize') || 'm';
