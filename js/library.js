@@ -5,41 +5,24 @@ import { extractLines } from './extract.js';
 import { parseStructure } from './parser.js';
 import { sheet, closeSheet, toast, escapeHtml } from './ui.js';
 import { setApiKey, getApiKey, setGeminiKey, getGeminiKey } from './ai.js';
+import { FOLDER_ORDER, suggestFolder, folderOf, categoryOf } from './taxonomy.js';
+import { rebuildKnowledgeIndex, ensureIndexLoaded, getStats } from './analysis.js';
+
+export { suggestFolder, categoryOf }; // re-exported — practice.js/others import these from here
 
 let el, onChange = () => {}, tab = 'notes', notesSub = 'full';
 const collapsed = new Set(JSON.parse(localStorage.getItem('lib-collapsed') || '[]'));
-
-// fixed, predictable paper order — not alphabetical
-const FOLDER_ORDER = ['GS1', 'GS2', 'GS3', 'GS4', 'PubAd', 'Essay', 'General'];
 
 export function setLibraryChangeHandler(fn) { onChange = fn; }
 
 export async function mountLibrary(root) {
   el = root;
+  const idx = await ensureIndexLoaded();
+  // first run / pre-existing docs uploaded before the Knowledge Engine existed
+  const docs = await DB.allDocs();
+  const hasFullNotes = docs.some(d => categoryOf(d) === 'full');
+  if (hasFullNotes && !idx.stats.builtAt) await rebuildKnowledgeIndex();
   await render();
-}
-
-export function suggestFolder(name) {
-  const n = name.toLowerCase();
-  if (/gs-?\s?1|geography|history|society|culture/.test(n)) return 'GS1';
-  if (/gs-?\s?2|polity|governance|ir\b|international|constitution|social justice/.test(n)) return 'GS2';
-  if (/gs-?\s?3|economy|environment|science|security|disaster/.test(n)) return 'GS3';
-  if (/gs-?\s?4|ethics|integrity|aptitude/.test(n)) return 'GS4';
-  if (/pubad|pub ad|public adm/.test(n)) return 'PubAd';
-  if (/essay/.test(n)) return 'Essay';
-  if (/model|answer/.test(n)) return 'Model Answers';
-  return 'General';
-}
-
-const folderOf = d => d.folder || suggestFolder(d.title);
-
-// category: 'audio' = flow-audio files (audiobook), 'full' = direct full notes
-// (cards / quiz / answer / diagrams). Explicit field wins; else infer.
-export function categoryOf(d) {
-  if (d.category) return d.category;
-  if (/audio|flow/i.test(d.title + ' ' + (d.filename || ''))) return 'audio';
-  if (d.uses && d.uses.audio !== false && d.uses.cards === false && d.uses.quiz === false) return 'audio';
-  return 'full';
 }
 
 function groupByFolder(items) {
@@ -87,6 +70,7 @@ async function render() {
         ${notesSub === 'full' ? `
           <div id="drop-full" class="drop-zone" data-kind="notes" data-cat="full">➕ <b>Add Full Notes</b> — drop or tap to upload .docx / .pdf / .txt<br>
             <span class="tiny">Becomes cards · quiz · answers · diagrams</span></div>
+          ${knowledgeEngineStrip()}
           ${groupByFolder(fullNotes).map(g => folderBlock(g.name, g.items)).join('') || '<div class="empty tiny" style="padding:10px">None yet.</div>'}
         ` : `
           <div id="drop-audio" class="drop-zone" data-kind="notes" data-cat="audio">➕ <b>Add Audio Files</b> — drop or tap to upload .docx / .pdf / .txt<br>
@@ -130,6 +114,25 @@ async function render() {
     render();
   });
   el.querySelectorAll('[data-act]').forEach(b => b.onclick = (e) => { e.stopPropagation(); action(b.dataset.act, b.dataset.id); });
+  const reanalyze = el.querySelector('#kb-reanalyze');
+  if (reanalyze) reanalyze.onclick = async () => {
+    toast('🧠 Re-analyzing your notes…');
+    const stats = await rebuildKnowledgeIndex();
+    toast(`Analyzed ${stats.docs} documents · ${stats.crossLinks} cross-linked facts ✓`);
+    await render();
+  };
+}
+
+// visible proof the engine actually studied your uploads — updates whenever
+// a Full Notes document is added, edited or removed
+function knowledgeEngineStrip() {
+  const s = getStats();
+  if (!s.docs) return '';
+  return `
+    <div class="kb-strip">
+      <span>🧠 <b>Knowledge engine</b> — ${s.docs} docs · ${s.themes} themes · ${s.entities} facts extracted · <b>${s.crossLinks}</b> cross-linked across documents</span>
+      <button class="btn sm ghost" id="kb-reanalyze">🔄</button>
+    </div>`;
 }
 
 function folderBlock(name, items) {
@@ -185,6 +188,7 @@ function folderDatalist() {
 async function intake(files, kind, category = 'full') {
   const list = [...files];
   if (!list.length) return;
+  let addedFull = false;
   for (const f of list) {
     try {
       toast(`Reading ${f.name}…`);
@@ -192,14 +196,19 @@ async function intake(files, kind, category = 'full') {
       if (!lines.length) throw new Error('No text found in file');
       const title = f.name.replace(/\.(docx|pdf|txt|md)$/i, '').replace(/[_-]+/g, ' ');
       if (kind === 'model') {
-        await DB.putDoc({ id: uid(), kind: 'model', title, filename: f.name, createdAt: Date.now(), lines });
+        await DB.putDoc({ id: uid(), kind: 'model', title, filename: f.name, createdAt: Date.now(), lines, fileBlob: f });
         toast(`Added "${title}" to Knowledge Bank ✓`);
       } else {
-        await showUploadOptions({ title, filename: f.name, lines, category });
+        await showUploadOptions({ title, filename: f.name, lines, category, fileBlob: f });
+        if (category === 'full') addedFull = true;
       }
     } catch (e) {
       toast(`${f.name}: ${e.message}`, 4000);
     }
+  }
+  if (addedFull) {
+    const stats = await rebuildKnowledgeIndex();
+    toast(`🧠 Studied ${stats.docs} documents · ${stats.crossLinks} cross-linked facts ✓`, 3500);
   }
   await render();
   onChange();
@@ -245,6 +254,7 @@ function showUploadOptions(pending) {
           folder: root.querySelector('#up-folder').value.trim() || 'General',
           mode: modeChip ? modeChip.dataset.mode : 'verbatim',
           uses, lines: pending.lines,
+          fileBlob: pending.fileBlob || null, // original upload — kept for "View original"
         });
         closeSheet();
         toast(`Added "${pending.title}" ✓`);
@@ -309,6 +319,7 @@ function showDocOptions(d) {
       await DB.putDoc(d);
       closeSheet();
       toast('Saved ✓');
+      if (d.kind !== 'model') await rebuildKnowledgeIndex();
       await render();
       onChange();
     };
@@ -327,7 +338,9 @@ async function loadSeed() {
       });
     }
     await DB.setKV('seed-loaded', true);
-    toast(`Loaded ${seedDocs.length} documents ✓`);
+    toast(`Loaded ${seedDocs.length} documents — analyzing…`);
+    const stats = await rebuildKnowledgeIndex();
+    toast(`🧠 Studied ${stats.docs} documents · ${stats.crossLinks} cross-linked facts ✓`, 3500);
     await render();
     onChange();
   } catch (e) {
@@ -340,8 +353,11 @@ async function action(act, id) {
   if (!d) return;
   if (act === 'del') {
     if (!confirm(`Delete "${d.title}"? This cannot be undone.`)) return;
+    const wasFull = categoryOf(d) === 'full';
     await DB.delDoc(id);
+    await DB.setKV('analysis:' + id, null);
     toast('Deleted');
+    if (wasFull) await rebuildKnowledgeIndex();
     await render();
     onChange();
   } else if (act === 'opts') {
@@ -351,16 +367,21 @@ async function action(act, id) {
   }
 }
 
-function showEditor(doc) {
+function showEditor(doc, presetText) {
+  const text = presetText != null ? presetText : doc.lines.join('\n');
   sheet(`
     <h3>✏️ Edit — ${escapeHtml(doc.title)}</h3>
+    <div class="row" style="margin-bottom:8px">
+      <button class="btn sm" id="ed-view-original">📄 View original file</button>
+    </div>
     <p class="muted tiny" style="margin-bottom:10px">One line per row. Edits update the audiobook, read-along, cards and quizzes instantly. Theme lines look like <b>T1 · Title</b>; sections like <b>1 · SECTION</b>.</p>
-    <textarea class="editor-ta" id="ed-ta" spellcheck="false">${escapeHtml(doc.lines.join('\n'))}</textarea>
+    <textarea class="editor-ta" id="ed-ta" spellcheck="false">${escapeHtml(text)}</textarea>
     <div class="row" style="margin-top:12px">
       <button class="btn" id="ed-cancel">Cancel</button>
       <div class="spacer"></div>
       <button class="btn primary" id="ed-save">Save changes</button>
     </div>`, (root) => {
+    root.querySelector('#ed-view-original').onclick = () => showOriginalView(doc, root.querySelector('#ed-ta').value);
     root.querySelector('#ed-cancel').onclick = closeSheet;
     root.querySelector('#ed-save').onclick = async () => {
       const lines = root.querySelector('#ed-ta').value.split('\n').map(s => s.trim()).filter(Boolean);
@@ -370,9 +391,50 @@ function showEditor(doc) {
       await DB.setKV('aicards:' + doc.id, null);
       closeSheet();
       toast('Saved — audio & cards updated ✓');
+      if (categoryOf(doc) === 'full') await rebuildKnowledgeIndex();
       await render();
       onChange();
     };
+  });
+}
+
+// read-only view of the ORIGINAL uploaded file — re-extracted fresh from the
+// stored blob every time, so later edits to doc.lines never affect it
+async function showOriginalView(doc, returnText) {
+  if (!(doc.fileBlob instanceof Blob)) {
+    sheet(`
+      <h3>📄 Original file</h3>
+      <p class="muted small" style="margin-bottom:12px">This document was added before "View Original" existed, so the original file wasn't kept — showing the extracted text instead.</p>
+      <div class="orig-body">${doc.lines.map(l => `<p>${escapeHtml(l)}</p>`).join('')}</div>
+      <div class="row" style="margin-top:14px"><button class="btn" id="orig-back">‹ Back to edit</button></div>
+    `, (root) => { root.querySelector('#orig-back').onclick = () => showEditor(doc, returnText); });
+    return;
+  }
+  const filename = doc.fileBlob.name || doc.filename || (doc.title + '.txt');
+  const isDocx = /\.docx$/i.test(filename);
+  const url = URL.createObjectURL(doc.fileBlob);
+  sheet(`
+    <h3>📄 ${escapeHtml(doc.title)} — Original</h3>
+    <div class="row" style="margin-bottom:10px;gap:8px">
+      <button class="btn sm" id="orig-back">‹ Back to edit</button>
+      <a class="btn sm primary" href="${url}" download="${escapeHtml(filename)}">⬇ Download original</a>
+    </div>
+    <div class="orig-body" id="orig-body"><p class="muted">Loading full document…</p></div>
+  `, async (root) => {
+    root.querySelector('#orig-back').onclick = () => showEditor(doc, returnText);
+    const box = root.querySelector('#orig-body');
+    try {
+      if (isDocx && window.mammoth) {
+        const buf = await doc.fileBlob.arrayBuffer();
+        const { value } = await window.mammoth.convertToHtml({ arrayBuffer: buf });
+        box.innerHTML = value || '<p class="muted">No content extracted.</p>';
+      } else {
+        const freshLines = await extractLines(doc.fileBlob);
+        box.innerHTML = freshLines.map(l => `<p>${escapeHtml(l)}</p>`).join('');
+      }
+    } catch (e) {
+      box.innerHTML = `<p class="muted">Couldn't render a preview (${escapeHtml(e.message)}). Use "Download original" above to open it in Word/Adobe.</p>`;
+    }
   });
 }
 

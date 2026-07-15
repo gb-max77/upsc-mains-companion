@@ -6,6 +6,7 @@ import { mountQuiz, reloadQuiz } from './quiz.js';
 import { mountPractice, reloadPractice } from './practice.js';
 import { mountLibrary, setLibraryChangeHandler } from './library.js';
 import { speech } from './tts.js';
+import { rebuildKnowledgeIndex, ensureIndexLoaded } from './analysis.js';
 
 const mounts = {
   listen: { fn: mountListen, done: false },
@@ -60,8 +61,17 @@ async function firstRun() {
   }
 }
 
+// Knowledge Engine: make sure the cross-document index exists before any
+// feature needs it — runs once per session, cheap, so Quiz/Cards/Answer
+// enrichment works even if the user never opens the Library tab.
+async function ensureKnowledgeEngine() {
+  const idx = await ensureIndexLoaded();
+  if (!idx.stats.builtAt) await rebuildKnowledgeIndex();
+}
+
 (async () => {
   await firstRun();
+  await ensureKnowledgeEngine();
   await showView('listen');
 })();
 

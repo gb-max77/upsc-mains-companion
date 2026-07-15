@@ -6,7 +6,8 @@ import { DB } from './db.js';
 import { parseStructure, classifyLine, cleanTitle, decorateLine } from './parser.js';
 import { escapeHtml, sheet, closeSheet, toast } from './ui.js';
 import { geminiAvailable, callGemini, mainsAnswerPrompt } from './ai.js';
-import { suggestFolder } from './library.js';
+import { suggestFolder, categoryOf } from './taxonomy.js';
+import { ensureIndexLoaded } from './analysis.js';
 
 // ---------- paper-specific high-scoring tacticalities ----------
 const TACTICS = {
@@ -38,6 +39,23 @@ async function bankSnippets(question, n = 6) {
   return scored.sort((a, b) => b.s - a.s).slice(0, n).map(x => x.l);
 }
 
+// Knowledge Engine: mine every OTHER "Full Notes" document (not just the one
+// this question came from, and not just the Knowledge Bank) for matching
+// facts — so a GS1 example can surface while answering a GS2 question.
+async function crossDocSnippets(question, excludeDocId, n = 4) {
+  const docs = (await DB.allDocs()).filter(d => categoryOf(d) === 'full' && d.id !== excludeDocId);
+  const q = tokens(question);
+  const scored = [];
+  for (const d of docs) {
+    for (const l of d.lines) {
+      if (l.length < 40 || l.length > 500) continue;
+      const s = overlap(q, tokens(l));
+      if (s >= 0.3) scored.push({ l, s, doc: d.title });
+    }
+  }
+  return scored.sort((a, b) => b.s - a.s).slice(0, n);
+}
+
 // time and word limit are independent — you pick each
 const TIMES = [7.5, 9.5];                 // minutes
 const WORDS = [150, 200, 250, 300];       // word limits
@@ -50,6 +68,7 @@ const answerDocs = async () => (await DB.allDocs()).filter(d => !d.uses || d.use
 
 export async function mountPractice(root) {
   el = root;
+  await ensureIndexLoaded();
   docs = await answerDocs();
   renderIdle();
 }
@@ -355,6 +374,13 @@ async function notesAnswer(limit) {
       + snips.map(s => `<p class="ma-pt">– ${decorateLine(s)}</p>`).join('');
     ans.source += ' + knowledge bank';
   }
+  // Knowledge Engine: pull matching facts from your OTHER full-notes documents
+  const cross = await crossDocSnippets(currentQ, current.doc.id, 3);
+  if (cross.length) {
+    ans.html += `<p class="ma-h">🧠 Cross-document insight</p>`
+      + cross.map(c => `<p class="ma-pt">– ${decorateLine(c.l)} <span class="ma-src">${escapeHtml(c.doc)}</span></p>`).join('');
+    ans.source += ' + cross-doc';
+  }
   return ans;
 }
 
@@ -376,12 +402,14 @@ async function geminiAnswer(limit, withNotes) {
     notesCtx = current.doc.lines.slice(current.start, current.end).join('\n').slice(0, 12000);
     const snips = await bankSnippets(currentQ, 6);
     if (snips.length) notesCtx += '\n\nVALUE-ADDITION FROM KNOWLEDGE BANK:\n' + snips.join('\n');
+    const cross = await crossDocSnippets(currentQ, current.doc.id, 4);
+    if (cross.length) notesCtx += '\n\nCROSS-DOCUMENT INSIGHTS (from your other subject notes):\n' + cross.map(c => `[${c.doc}] ${c.l}`).join('\n');
   }
   const text = await callGemini(mainsAnswerPrompt(currentQ, limit, notesCtx, TACTICS[paper], paper));
   return {
     html: formatAiAnswer(text),
     words: text.split(/\s+/).filter(Boolean).length,
-    source: (withNotes ? 'Gemini + notes + knowledge bank' : 'Gemini') + ` · ${paper} tactics`,
+    source: (withNotes ? 'Gemini + notes + bank + cross-doc' : 'Gemini') + ` · ${paper} tactics`,
   };
 }
 

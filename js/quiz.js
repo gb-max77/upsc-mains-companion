@@ -5,28 +5,8 @@
 import { DB } from './db.js';
 import { escapeHtml } from './ui.js';
 import { buildCardsForDoc } from './cards.js';
-
-// Each pattern is typed so a question mixes fact KINDS (a keyword + a case +
-// an example + a year) instead of four years. Order = blanking priority.
-const PATTERNS = [
-  // keyword lead-ins — the "write this" token that opens each point
-  { t: 'keyword', re: /(?:^|·\s+)([A-Z][^:·—]{2,42}?):\s/g, group: 1 },
-  { t: 'case', re: /\b[A-Z][A-Za-z.'']+(?:\s[A-Z][A-Za-z.'']+){0,3}\s(?:v\.?|vs\.?)\s[A-Z][A-Za-z.'']+/g },
-  // named entity right before "(year)": Kesavananda (1973), NFHS-5 (2021)…
-  { t: 'name', re: /\b[A-Z][\w.''&-]+(?:\s[A-Z][\w.''&-]+){0,3}(?=\s*\((?:1[89]|20)\d{2}\))/g },
-  // theories & institutions: X Committee / Doctrine / Act / Theory / Model…
-  { t: 'theory', re: /\b[A-Z][\w''-]+(?:\s(?:[A-Z][\w''-]+|of|the|and)){0,3}\s(?:Committee|Commission|Doctrine|Mission|Act|Bill|Policy|Model|Theory|Curve|Index|Report|Scheme|Yojana|Abhiyan|Convention|Protocol|Treaty|Agreement|Summit|Fund|Principle|Hypothesis)\b/g },
-  // examples — the proof that earns marks: blank what follows "Ex:"
-  { t: 'example', re: /\bEx:\s*([^·.;()]{4,60})/g, group: 1 },
-  // thinker quotes: blank what was said
-  { t: 'quote', re: /“([^”]{4,70})”/g, group: 1 },
-  { t: 'article', re: /\bArts?\.?\s?\d+[A-Z]?(?:\(\w+\))?/g },
-  { t: 'amendment', re: /\b\d+(?:st|nd|rd|th)\s(?:Amdt|Amendment|Schedule)\b/g },
-  { t: 'data', re: /\b\d+(?:\.\d+)?\s?(?:%|crore|lakh|bn|mn|km)\b/g },
-  { t: 'year', re: /\b(?:1[89]|20)\d{2}\b/g },
-  // schemes & acronyms: MGNREGA, DPSP, NJAC…
-  { t: 'acronym', re: /\b[A-Z]{3,}(?:-[A-Z0-9]{1,4})?\b/g },
-];
+import { findEntities } from './entities.js';
+import { crossRefsFor, ensureIndexLoaded } from './analysis.js';
 
 let el, pool = [], round = [], qIdx = 0, filterDoc = 'all', docs = [];
 
@@ -34,6 +14,7 @@ const quizDocs = async () => (await DB.allDocs()).filter(d => !d.uses || d.uses.
 
 export async function mountQuiz(root) {
   el = root;
+  await ensureIndexLoaded();
   docs = await quizDocs();
   el.innerHTML = `
     <div class="pad">
@@ -68,26 +49,10 @@ async function buildPool() {
   for (const d of use) {
     for (const card of buildCardsForDoc(d)) {
       if (card.text.split(/\s+/).length < 30) continue;
-      const matches = findMatches(card.text);
-      if (matches.length >= 3) pool.push({ line: card.text, matches, theme: card.theme, doc: d.title });
+      const matches = findEntities(card.text);
+      if (matches.length >= 3) pool.push({ line: card.text, matches, theme: card.theme, doc: d.title, docId: d.id });
     }
   }
-}
-
-function findMatches(line) {
-  const out = [];
-  for (const p of PATTERNS) {
-    p.re.lastIndex = 0;
-    let m;
-    while ((m = p.re.exec(line))) {
-      // for group patterns (quotes) blank only the inner text
-      const text = p.group ? m[p.group] : m[0];
-      const start = p.group ? m.index + m[0].indexOf(text) : m.index;
-      const end = start + text.length;
-      if (!out.some(o => start < o.end && end > o.start)) out.push({ start, end, text, t: p.t });
-    }
-  }
-  return out.sort((a, b) => a.start - b.start);
 }
 
 // choose blanks preferring a MIX of fact kinds spread across the passage;
@@ -118,7 +83,10 @@ function newRound() {
   for (let i = 0; i < 12 && src.length; i++) {
     const q = src.splice(Math.floor(Math.random() * src.length), 1)[0];
     // pick blanks ONCE so revisiting a question shows the same blanks
-    round.push({ ...q, blanks: pickBlanks(q.matches, q.line), state: null, revealed: new Set() });
+    round.push({
+      ...q, blanks: pickBlanks(q.matches, q.line), state: null, revealed: new Set(),
+      crossRefs: crossRefsFor(q.line, q.docId, 3), // Knowledge Engine: same facts in OTHER documents
+    });
   }
   qIdx = 0;
   renderQ();
@@ -161,10 +129,14 @@ function renderQ() {
   }
   html += escapeHtml(q.line.slice(last));
 
+  const crossHtml = q.crossRefs && q.crossRefs.length
+    ? `<div class="qz-xref">🔗 Also in: ${q.crossRefs.map(r => `<b>${escapeHtml(r.docTitle.split('·').pop().trim())}</b> — ${escapeHtml(r.theme)}`).join(' · ')}</div>`
+    : '';
   body.innerHTML = `
     <div class="card-ui">
       <div class="qz-ctx">${escapeHtml(q.theme)}${q.state ? ` · <span style="color:${q.state === 'got' ? 'var(--good)' : 'var(--bad)'}">${q.state === 'got' ? '✓ recalled' : '✗ missed'}</span>` : ''}</div>
       <div class="qz-line">${html}</div>
+      ${crossHtml}
       <div class="row">
         <button class="btn sm ghost" id="qz-reveal">Reveal all</button>
         <div class="spacer"></div>

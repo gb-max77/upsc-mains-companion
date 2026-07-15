@@ -3,6 +3,7 @@ import { DB } from './db.js';
 import { parseStructure, classifyLine, cleanTitle } from './parser.js';
 import { escapeHtml, toast } from './ui.js';
 import { aiAvailable, enhanceDocCards } from './ai.js';
+import { crossRefsFor, ensureIndexLoaded } from './analysis.js';
 
 const GRADIENTS = [
   'linear-gradient(160deg,#1c2340,#0e1524)',
@@ -129,6 +130,7 @@ let panelOpen = false;
 
 export async function mountCards(root) {
   el = root;
+  await ensureIndexLoaded();
   el.innerHTML = `
     <div class="cards-top">
       <div class="seg" style="margin-bottom:8px">
@@ -290,8 +292,12 @@ function cardNode(c, i) {
   const d = document.createElement('div');
   d.className = 'reel-card';
   d.style.background = GRADIENTS[i % GRADIENTS.length];
+  // Knowledge Engine: does this card's fact also show up elsewhere?
+  const xrefs = crossRefsFor(c.text, c.docId, 3);
+  const xrefBadge = xrefs.length
+    ? `<span class="rc-xref" title="Also appears in: ${escapeHtml(xrefs.map(r => r.docTitle).join(', '))}">🔗 ${xrefs.length}</span>` : '';
   d.innerHTML = `
-    <div class="rc-tags"><span class="rc-label">${escapeHtml(c.label)}</span><span class="rc-doc">${escapeHtml(c.doc)}</span></div>
+    <div class="rc-tags"><span class="rc-label">${escapeHtml(c.label)}</span>${xrefBadge}<span class="rc-doc">${escapeHtml(c.doc)}</span></div>
     <div class="rc-theme">${escapeHtml(c.theme)}</div>
     <div class="rc-text ${recall ? 'blur' : ''}">${escapeHtml(c.text)}</div>
     <div class="rc-foot"><span>${escapeHtml(c.section)}</span><span class="rc-count">${i + 1} / ${shownCards.length} · ${wc(c.text)}w</span></div>`;
