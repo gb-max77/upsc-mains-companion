@@ -52,10 +52,14 @@ export async function rebuildKnowledgeIndex() {
       }
     }
   }
-  // keep only entities that genuinely cross-link ≥2 distinct documents
+  // crossRefs: entities that genuinely cross-link ≥2 distinct documents.
+  // refs: EVERY indexed entity (capped per fact) — lets other modules ask
+  // "where do my notes talk about X?" even when only one document does.
   const crossRefs = {};
+  const refs = {};
   let crossLinks = 0;
   for (const [norm, arr] of byNorm) {
+    refs[norm] = arr.slice(0, 8);
     const distinctDocs = new Set(arr.map(x => x.docId));
     if (distinctDocs.size >= 2) { crossRefs[norm] = arr; crossLinks++; }
   }
@@ -66,7 +70,7 @@ export async function rebuildKnowledgeIndex() {
     crossLinks,
     builtAt: Date.now(),
   };
-  indexCache = { crossRefs, stats };
+  indexCache = { crossRefs, refs, stats };
   await DB.setKV('knowledge-index', indexCache);
   return stats;
 }
@@ -76,12 +80,46 @@ export async function rebuildKnowledgeIndex() {
 export async function ensureIndexLoaded() {
   if (indexCache) return indexCache;
   indexCache = await DB.getKV('knowledge-index', null)
-    || { crossRefs: {}, stats: { docs: 0, themes: 0, entities: 0, crossLinks: 0 } };
+    || { crossRefs: {}, refs: {}, stats: { docs: 0, themes: 0, entities: 0, crossLinks: 0 } };
   return indexCache;
 }
 
 export function getStats() {
   return (indexCache && indexCache.stats) || { docs: 0, themes: 0, entities: 0, crossLinks: 0 };
+}
+
+// "where do my notes cover the facts in this text?" — matches entities in
+// `text` against EVERY indexed document (single-doc facts included), unlike
+// crossRefsFor which only surfaces multi-document links. Powers the Bank's
+// 📎 From-your-notes panel. Call ensureIndexLoaded() once beforehand.
+const NOTES_TYPE_RANK = { case: 0, quote: 1, theory: 2, article: 3, amendment: 4, name: 5, acronym: 6 };
+export function notesRefsFor(text, max = 6) {
+  if (!indexCache || !indexCache.refs) return [];
+  // specific facts first (a case/theory beats a ubiquitous acronym like UPSC),
+  // and at most 2 hits per fact so one match can't flood the panel
+  const uniq = new Map();
+  for (const e of findEntities(text)) {
+    if (!LINKABLE_TYPES.has(e.t)) continue;
+    const n = normalizeEntity(e.text);
+    if (!uniq.has(n)) uniq.set(n, e);
+  }
+  const ranked = [...uniq.values()]
+    .map(e => ({ e, hits: indexCache.refs[normalizeEntity(e.text)] }))
+    .filter(x => x.hits)
+    .sort((a, b) => (NOTES_TYPE_RANK[a.e.t] ?? 9) - (NOTES_TYPE_RANK[b.e.t] ?? 9) || a.hits.length - b.hits.length);
+  const seen = new Set();
+  const out = [];
+  for (const { e, hits } of ranked) {
+    let perFact = 0;
+    for (const h of hits) {
+      const key = h.docId + '|' + h.theme;
+      if (seen.has(key) || perFact >= 2) continue;
+      seen.add(key); perFact++;
+      out.push({ ...h, match: e.text });
+      if (out.length >= max) return out;
+    }
+  }
+  return out;
 }
 
 // synchronous cross-reference lookup for a passage/theme — call

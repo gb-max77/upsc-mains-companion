@@ -1,10 +1,13 @@
 // 📝 Bank — the locked question banks with pre-generated model answers.
-// Views per answer: Full / Skeleton / Flashcard, plus audio narration.
+// Views per answer: Full / Skeleton / Flashcard. Full view doubles as a
+// read-along player: every audible line is tappable (start/seek) and the
+// speaking line is highlighted and kept in view, like the Listen tab.
 // Answers ship as static JSON (data/answers/<paperId>.json), generated paper-wise.
 import { DB } from './db.js';
 import { speech } from './tts.js';
 import { sheet, closeSheet, toast, escapeHtml } from './ui.js';
 import { openaiAvailable, callOpenAI } from './ai.js';
+import { ensureIndexLoaded, notesRefsFor } from './analysis.js';
 
 let root = null;
 let banks = [];
@@ -12,9 +15,14 @@ const answers = {};           // paperId -> {qid: answer} | null (fetched, none 
 let dropped = new Set();
 let nav = { view: 'home', paper: null, q: null, mode: 'full' };
 
+// app.js calls this when the user leaves the Bank tab — the shared speech
+// engine must hand its callbacks back to the Listen player before it's reused
+export function leaveAnswers() { stopBankAudio(); }
+
 export async function mountAnswers(el) {
   root = el;
   dropped = new Set(await DB.getKV('bank-dropped', []));
+  await ensureIndexLoaded();
   try {
     banks = await (await fetch('data/banks.json')).json();
   } catch {
@@ -49,7 +57,18 @@ function md(s) {
 const plain = (s) => s.replace(/\*\*?/g, '');
 const golds = (s) => [...s.matchAll(/\*\*(.+?)\*\*/g)].map(m => m[1]);
 
+// exam-written words: ONE intro + headings + points + way forward + conclusion
+function wordCount(a) {
+  const parts = [];
+  if (a.intro?.[0]) parts.push(a.intro[0].x);
+  (a.body || []).forEach(s => { parts.push(s.h); s.p.forEach(pt => parts.push(pt.x)); });
+  (a.wf || []).forEach(x => parts.push(x));
+  if (a.conc) parts.push(a.conc);
+  return parts.map(plain).join(' ').split(/\s+/).filter(Boolean).length;
+}
+
 function render() {
+  stopBankAudio();
   if (nav.view === 'home') renderHome();
   else if (nav.view === 'paper') renderPaper();
   else renderQuestion();
@@ -120,18 +139,24 @@ async function renderQuestion() {
   const dir = ans?.directive || directiveOf(q.q);
   const time = Math.round(q.m * 0.72);
   const off = dropped.has(id);
+  const wc = ans ? wordCount(ans) : 0;
+  const wcOk = ans && wc >= q.w * 0.9 && wc <= q.w * 1.1;
+  // "understand like a UPSC expert": entities in the question + answer matched
+  // against everything uploaded in the Library (Knowledge Engine all-facts index)
+  const noteRefs = notesRefsFor(ans ? walk(ans, q).join(' ') : q.q, 6);
 
   root.innerHTML = `
     <div class="bank-top row">
       <button class="btn ghost sm" id="bk-back">←</button>
       <div class="row" style="gap:6px;flex:1">
-        <span class="chip on">${q.m} marks</span><span class="chip">${q.w}w</span>
-        <span class="chip">⏱ ${time} min</span><span class="chip">${dir}</span>
+        <span class="chip on">${q.m} marks</span>
+        <span class="chip">${dir}</span><span class="chip">⏱ ${time} min</span>
+        ${ans ? `<span class="chip ${wcOk ? 'wc-ok' : 'wc-bad'}" title="exam-written words vs the ${q.w}-word limit">${wc}/${q.w}w</span>` : `<span class="chip">${q.w}w</span>`}
       </div>
       <button class="btn ghost sm" id="bk-drop" title="drop from final list">${off ? '♻️' : '🗑'}</button>
     </div>
     <div class="bank-scroll">
-      <div class="bank-qfull ${off ? 'off' : ''}">${escapeHtml(q.q)}
+      <div class="bank-qfull ${off ? 'off' : ''}" data-ln="0">${escapeHtml(q.q)}
         <div class="tiny muted" style="margin-top:6px">${escapeHtml(q.src)}${q.topic ? ' · 🏷 topic title — frame the stem yourself' : ''}${q.theme ? ' · ' + escapeHtml(q.theme) : ''}</div>
       </div>
       ${ans ? `
@@ -147,10 +172,16 @@ async function renderQuestion() {
       <div id="bk-answer">${renderAnswer(ans, q)}</div>` : `
       <div class="bank-pending card-ui" style="margin:14px">⏳ <b>Answer batch pending.</b>
         <p class="tiny muted" style="margin-top:6px">Answers are being generated paper-wise (verified against notes + web).
-        This one will appear in an upcoming deploy — pull-to-refresh once notified.</p></div>`}
+        This one will appear in an upcoming deploy.</p></div>`}
+      ${noteRefs.length ? `
+      <div class="bank-notes">
+        <div class="bank-notes-h">📎 From your notes <span class="tiny muted">— where your Library covers this</span></div>
+        ${noteRefs.map(r => `<div class="bank-note"><b>${escapeHtml(r.match)}</b>
+          <span class="muted">→ ${escapeHtml(r.docTitle)} · ${escapeHtml(r.theme)}</span></div>`).join('')}
+      </div>` : ''}
     </div>`;
 
-  root.querySelector('#bk-back').onclick = () => { stopBankAudio(); nav = { ...nav, view: 'paper' }; render(); };
+  root.querySelector('#bk-back').onclick = () => { nav = { ...nav, view: 'paper' }; render(); };
   root.querySelector('#bk-drop').onclick = async () => {
     off ? dropped.delete(id) : dropped.add(id);
     await DB.setKV('bank-dropped', [...dropped]);
@@ -159,29 +190,49 @@ async function renderQuestion() {
   };
   if (!ans) return;
   root.querySelectorAll('.seg-btn').forEach(b => b.onclick = () => {
+    stopBankAudio();
     nav.mode = b.dataset.m;
     root.querySelectorAll('.seg-btn').forEach(x => x.classList.toggle('on', x === b));
     root.querySelector('#bk-answer').innerHTML = renderAnswer(ans, q);
-    wireCard(ans);
+    wireAnswer(ans, q);
   });
   root.querySelector('#bk-audio').onclick = () => toggleBankAudio(ans, q);
   root.querySelector('#bk-ai').onclick = () => aiSheet(ans, q);
-  wireCard(ans);
+  wireAnswer(ans, q);
+}
+
+/* ---------- one linear walk shared by the Full view and the audio player:
+   walk()[i] speaks as line i, and the element tagged data-ln="i" is its
+   on-screen counterpart — tap it to play from there, highlight follows. */
+function walk(a, q) {
+  const seq = [{ text: 'Question. ' + q.q }];
+  if (a.intro?.[0]) seq.push({ text: plain(a.intro[0].x) });
+  (a.body || []).forEach(s => {
+    seq.push({ text: plain(s.h) + ':' });
+    s.p.forEach(pt => seq.push({ text: plain(pt.x) }));
+  });
+  if (a.wf?.length) { seq.push({ text: 'Way forward:' }); a.wf.forEach(x => seq.push({ text: plain(x) })); }
+  if (a.conc) seq.push({ text: 'In conclusion. ' + plain(a.conc) });
+  return seq.map(s => s.text);
 }
 
 function renderAnswer(a, q) {
   if (nav.mode === 'skel') return renderSkeleton(a);
   if (nav.mode === 'card') return renderCard(a, q);
   const vf = { n: '', w: ' <sup class="vf w" title="web-verified">✓</sup>', u: ' <sup class="vf u" title="could not verify — use with care">⚠</sup>' };
+  let ln = 1; // 0 = the question block rendered above
+  const introA = a.intro?.[0] ? `<p class="ans-intro aud" data-ln="${ln++}">${a.intro.length > 1 ? `<span class="ans-lbl">intro A · ${a.intro[0].t}</span>` : ''}${md(a.intro[0].x)}</p>` : '';
+  const introB = a.intro?.[1] ? `<p class="ans-intro alt">${`<span class="ans-lbl">intro B · ${a.intro[1].t} (alternative — not counted, not narrated)</span>`}${md(a.intro[1].x)}</p>` : '';
+  const body = (a.body || []).map(s =>
+    `<h4 class="ans-h aud" data-ln="${ln++}">${md(s.h)}</h4>
+     <ul class="ans-ul">${s.p.map(pt => `<li class="aud" data-ln="${ln++}">${md(pt.x)}${vf[pt.vf || 'n']}</li>`).join('')}</ul>`).join('');
+  const wf = a.wf?.length
+    ? `<h4 class="ans-h aud" data-ln="${ln++}">Way forward</h4><ul class="ans-ul">${a.wf.map(x => `<li class="aud" data-ln="${ln++}">${md(x)}</li>`).join('')}</ul>` : '';
+  const conc = a.conc ? `<p class="ans-conc aud" data-ln="${ln++}">${md(a.conc)}</p>` : '';
   return `<div class="bank-ans">
-    ${(a.intro || []).map((o, i) => `<p class="ans-intro">${a.intro.length > 1 ? `<span class="ans-lbl">intro ${['A', 'B'][i]} · ${o.t}</span>` : ''}${md(o.x)}</p>`).join('')}
-    ${(a.body || []).map(s => `<h4 class="ans-h">${md(s.h)}</h4>
-      <ul class="ans-ul">${s.p.map(pt => `<li>${md(pt.x)}${vf[pt.vf || 'n']}</li>`).join('')}</ul>`).join('')}
-    ${a.wf?.length ? `<h4 class="ans-h">Way forward</h4><ul class="ans-ul">${a.wf.map(x => `<li>${md(x)}</li>`).join('')}</ul>` : ''}
-    ${a.conc ? `<p class="ans-conc">${md(a.conc)}</p>` : ''}
+    ${introA}${introB}${body}${wf}${conc}
     ${a.diag ? renderDiag(a.diag) : ''}
     ${a.mne ? `<p class="ans-mne">🧠 ${md(a.mne)}</p>` : ''}
-    ${a.angle ? `<p class="tiny muted" style="margin-top:8px">🎯 Angle: ${escapeHtml(a.angle)}</p>` : ''}
   </div>`;
 }
 
@@ -205,14 +256,24 @@ function renderCard(a, q) {
     <ul class="bank-flash-a" style="display:none">${pts.map(x => `<li>${md(x)}</li>`).join('')}</ul>
   </div>`;
 }
-function wireCard() {
+
+function wireAnswer(a, q) {
   const f = root.querySelector('#bk-flash');
-  if (!f) return;
-  f.onclick = () => {
-    f.querySelector('.bank-flash-q').style.display = f.querySelector('.bank-flash-q').style.display === 'none' ? '' : 'none';
-    const a = f.querySelector('.bank-flash-a');
-    a.style.display = a.style.display === 'none' ? '' : 'none';
-  };
+  if (f) {
+    f.onclick = () => {
+      f.querySelector('.bank-flash-q').style.display = f.querySelector('.bank-flash-q').style.display === 'none' ? '' : 'none';
+      const el = f.querySelector('.bank-flash-a');
+      el.style.display = el.style.display === 'none' ? '' : 'none';
+    };
+  }
+  // read-along: tap any audible line to play from it (Full view only)
+  if (nav.mode === 'full') {
+    root.querySelectorAll('[data-ln]').forEach(el => el.addEventListener('click', () => {
+      const i = +el.dataset.ln;
+      if (bankPlaying) speech.seek(i);
+      else startBankAudio(a, q, i);
+    }));
+  }
 }
 
 function renderDiag(d) {
@@ -224,33 +285,50 @@ function renderDiag(d) {
   return `<div class="ans-diag"><pre class="tiny">${escapeHtml(d.d)}</pre></div>`;
 }
 
-/* ---------- audio: linearise Full view into the shared speech engine ---------- */
+/* ---------- read-along audio over the shared speech engine ---------- */
 let saved = null, bankPlaying = false;
-function answerLines(a, q) {
-  const L = ['Question. ' + q.q];
-  if (a.intro?.[0]) L.push(plain(a.intro[0].x));
-  (a.body || []).forEach(s => { L.push(plain(s.h) + ':'); s.p.forEach(pt => L.push(plain(pt.x))); });
-  if (a.wf?.length) { L.push('Way forward:'); a.wf.forEach(x => L.push(plain(x))); }
-  if (a.conc) L.push('In conclusion. ' + plain(a.conc));
-  return L;
+
+function highlightLine(i) {
+  root.querySelectorAll('.ans-hl').forEach(el => el.classList.remove('ans-hl'));
+  const el = root.querySelector(`[data-ln="${i}"]`);
+  if (el) {
+    el.classList.add('ans-hl');
+    el.scrollIntoView({ block: 'center', behavior: 'instant' });
+  }
 }
-function toggleBankAudio(a, q) {
-  if (bankPlaying) { stopBankAudio(); return; }
-  saved = { onLine: speech.onLine, onWord: speech.onWord, onLineDone: speech.onLineDone, onState: speech.onState, onFinish: speech.onFinish };
-  speech.onWord = () => {}; speech.onLineDone = () => {};
-  speech.onLine = (i) => root.querySelectorAll('#bk-answer li, #bk-answer p, #bk-answer h4').forEach(el => el.classList.remove('ans-hl'));
-  speech.onState = (on) => { const b = root.querySelector('#bk-audio'); if (b) b.textContent = on ? '⏸ Pause' : '🔊 Listen'; };
-  speech.onFinish = () => stopBankAudio();
-  speech.load(answerLines(a, q));
+
+function startBankAudio(a, q, fromLine = 0) {
+  if (!bankPlaying) {
+    saved = { onLine: speech.onLine, onWord: speech.onWord, onLineDone: speech.onLineDone, onState: speech.onState, onFinish: speech.onFinish };
+    speech.onWord = () => {}; speech.onLineDone = () => {};
+    speech.onLine = highlightLine;
+    speech.onState = (on) => { const b = root.querySelector('#bk-audio'); if (b) b.textContent = on ? '⏸ Pause' : '▶ Resume'; };
+    speech.onFinish = () => stopBankAudio();
+    speech.load(walk(a, q), fromLine);
+    bankPlaying = true;
+  }
   speech.play();
-  bankPlaying = true;
+  highlightLine(fromLine);
 }
+
+function toggleBankAudio(a, q) {
+  if (bankPlaying) { speech.playing ? speech.pause() : speech.play(); return; }
+  if (nav.mode !== 'full') { // audio follows the Full view — switch to it first
+    nav.mode = 'full';
+    root.querySelectorAll('.seg-btn').forEach(x => x.classList.toggle('on', x.dataset.m === 'full'));
+    root.querySelector('#bk-answer').innerHTML = renderAnswer(a, q);
+    wireAnswer(a, q);
+  }
+  startBankAudio(a, q, 0);
+}
+
 function stopBankAudio() {
   if (!bankPlaying) return;
   speech.stop();
   Object.assign(speech, saved || {});
   saved = null; bankPlaying = false;
-  const b = root.querySelector('#bk-audio'); if (b) b.textContent = '🔊 Listen';
+  const b = root && root.querySelector('#bk-audio'); if (b) b.textContent = '🔊 Listen';
+  root && root.querySelectorAll('.ans-hl').forEach(el => el.classList.remove('ans-hl'));
 }
 
 /* ---------- ✨ OpenAI actions (opt-in, user's key) ---------- */
@@ -262,7 +340,7 @@ function aiSheet(a, q) {
       r => r.querySelector('#ok').onclick = closeSheet);
     return;
   }
-  const full = answerLines(a, q).join('\n');
+  const full = walk(a, q).join('\n');
   const acts = {
     polish: ['✍️ Polish', 'Tighten the language of this UPSC model answer. Keep EVERY named fact, keyword and the exact structure. Return the improved answer only.'],
     extra: ['➕ Extra points', 'Suggest 3-4 ADDITIONAL scoring points (keyword → mechanism → named example) that this UPSC answer is missing. Only verifiable facts; flag anything you are unsure of with ⚠.'],

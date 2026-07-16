@@ -15,6 +15,8 @@ out, never prose that hides its skeleton.
 ## Universal rules (every paper)
 
 - **Word budget = 15 × marks** (±10%): 10m→150w · 15m→250w (GS) / 225w (PubAd) · 20m→300w.
+  Counted as exam-written words: ONE intro + headings + points + way forward + conclusion.
+  The app shows a live `written/limit` chip on every answer — out-of-budget renders red; fix before shipping a batch.
   **Time budget = 0.72 min × marks** (250 marks in 180 min): 10m≈7min · 15m≈11min · 20m≈14min.
 - **Density budget (handwritability):** 10m = 6–7 content points · 15m = 9–10 · 20m = 12–14.
   A point = keyword lead-in → mechanism → named example/data/case. Core of a point ≤ 12 words.
@@ -82,10 +84,9 @@ colonial-legacy axis"). Revise the cluster once; rehearse every angle.
   "wf": ["way-forward point", "…"],
   "conc": "conclusion line",
   "diag": {"k":"flow|hub|table","d":"…spec…"},
-  "mne": "mnemonic or null",
+  "mne": "OPTIONAL — only where a genuine ordered list exists (≥4 items someone would actually forget); never invent acronym gimmicks",
   "flash": ["5 load-bearing recall points"],
-  "angle": "sibling-differentiation note or null",
-  "cluster": "weber"
+  "cluster": "weber — generation-internal only: reuse the cluster's master content, re-aimed at this stem; cluster/angle notes are NOT rendered in the app"
 } }
 ```
 
