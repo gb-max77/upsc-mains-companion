@@ -33,6 +33,12 @@ Your 8 enriched cheat-sheets (GS1 Geography/History/Society, GS2 Polity/IR/GovSJ
 - ⏸ Pause / ⏹ Stop / restart the timer; it keeps running through Reveal so you can self-check against the clock
 - **Reveal structure** (Intro → H1/H2 → Way-forward → Conclusion from your notes) or **📄 Full model answer**, sized to your word limit, from three sources: **📚 Notes only** (composed from the theme + Knowledge Bank + cross-document facts), **✨ Just Gemini**, or **🔗 Gemini + Notes** — all tuned with paper-specific tactics (GS1–4, PubAd, Essay)
 
+### 📝 Bank (model answer bank)
+- Your 8 compiled 2026 question banks (629 questions: PubAd I/II, GS1 Geo/History, GS2 Polity/GovSJ/IR, GS3) ship pre-bundled as the locked final lists — browse paper → syllabus head → question
+- Pre-generated, verified model answers per question (rolling paper-wise batches), each with **📄 Full / 🦴 Skeleton / 🃏 Flashcard** views + **🔊 audio narration**
+- Answers follow the researched high-scoring scheme ([docs/answer-scheme.md](docs/answer-scheme.md)): word budget = 15×marks, exam-time chip, directive-aware structure, gold load-bearing keywords, examiner-lens note, verification tag on every named fact (✓ web-verified · ⚠ unverifiable)
+- 🗑 drop/restore any question to fix your final revision list; ✨ OpenAI actions (Polish / Extra points / Diagramise / Re-angle) with your own API key
+
 ### 🧠 Knowledge Engine
 Every **Full Notes** upload is parsed for cases, Articles, committees/acts, theories, quotes and acronyms, then cross-linked against every other Full Notes document — so a fact from one subject can surface while quizzing or answering in another. Rebuilds automatically on upload/edit/delete; Library shows live stats (docs · themes · facts · cross-links).
 
