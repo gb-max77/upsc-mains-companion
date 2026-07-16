@@ -1,0 +1,194 @@
+{
+  "pubad2-04": {
+    "questionId": "pubad2-04",
+    "intro": "Indianisation exposed the contradiction of colonial administration: the Raj invoked merit and political neutrality while reserving superior authority to sustain imperial control.",
+    "points": [
+      {
+        "lead": "Early exclusion",
+        "detail": "London-based examination, age limits, education and racial practice restricted Indian entry despite formal competition.",
+        "essential": true
+      },
+      {
+        "lead": "Political pressure",
+        "detail": "Nationalist criticism linked exclusion to unrepresentative policy and demanded simultaneous examination and equality of opportunity."
+      },
+      {
+        "lead": "Islington Commission",
+        "detail": "It accepted increased Indian recruitment but favoured gradual change and multiple entry channels that preserved European predominance.",
+        "essential": true
+      },
+      {
+        "lead": "Underlying logic",
+        "detail": "Concession sought administrative legitimacy and collaboration without surrendering the commanding positions of the colonial State."
+      },
+      {
+        "lead": "Post-war pressure",
+        "detail": "Constitutional reform and educated Indian opinion made a visibly foreign superior service politically untenable."
+      },
+      {
+        "lead": "Lee Commission",
+        "detail": "It accelerated Indianisation, supported direct recruitment in India and helped frame institutional protection for public services.",
+        "essential": true
+      },
+      {
+        "lead": "Administrative principle",
+        "detail": "The debate gradually moved toward merit, service security and a commission-based personnel system."
+      },
+      {
+        "lead": "Limit",
+        "detail": "Numerical entry did not automatically transform imperial purpose, hierarchy or social composition."
+      },
+      {
+        "lead": "Legacy",
+        "detail": "Competitive recruitment and a professional higher service survived, while representativeness and accountability remained unfinished tasks."
+      }
+    ],
+    "conclusion": "Indianisation was initially managed as political accommodation; its enduring administrative contribution emerged only when equal citizenship replaced imperial trust as the basis of service legitimacy.",
+    "keywords": [
+      "Indianisation",
+      "Islington Commission",
+      "Lee Commission",
+      "simultaneous examination",
+      "superior services",
+      "political concession"
+    ],
+    "sources": [
+      "Islington Commission Report",
+      "Lee Commission Report",
+      "Uploaded PubAd Paper II compiled and enriched notes",
+      "Constitution of India and relevant statutes",
+      "Second Administrative Reforms Commission where applicable"
+    ],
+    "verifiedAt": "16 Jul 2026",
+    "status": "verified",
+    "importedFrom": "pa2-01",
+    "matchScore": 0.788
+  },
+  "pubad2-50": {
+    "questionId": "pubad2-50",
+    "intro": "The All India Services create a common administrative cadre across two constitutional levels, supporting national standards while making cadre control a recurring federal negotiation.",
+    "points": [
+      {
+        "lead": "Federal glue",
+        "detail": "Common recruitment, training and mobility provide a pan-Indian outlook and personnel for Union-State coordination.",
+        "essential": true
+      },
+      {
+        "lead": "State capacity",
+        "detail": "Cadre officers supply district and secretariat leadership, especially where specialist and local services remain uneven."
+      },
+      {
+        "lead": "Neutrality",
+        "detail": "Shared service protection can buffer local partisan pressure, though Union influence may create another dependency."
+      },
+      {
+        "lead": "Cadre grievance",
+        "detail": "Deputation, empanelment, shortages and rule changes may be perceived by States as erosion of control over serving officers.",
+        "essential": true
+      },
+      {
+        "lead": "Union need",
+        "detail": "Central administration requires experienced field officers and a national talent pool for cross-jurisdictional tasks."
+      },
+      {
+        "lead": "Incentive distortion",
+        "detail": "Career aspirations toward the Union can reduce accountability to State priorities and long-term local expertise."
+      },
+      {
+        "lead": "Cooperative management",
+        "detail": "Cadre review, deputation and disciplinary questions need transparent criteria and genuine consultation."
+      },
+      {
+        "lead": "Balanced careers",
+        "detail": "Value State and field service in advancement, ensure minimum tenures and expand domain pathways at both levels."
+      },
+      {
+        "lead": "Reform principle",
+        "detail": "Neither unilateral recall nor complete State control fits a jointly constituted service."
+      }
+    ],
+    "conclusion": "AIS legitimacy rests on dual fidelity: national constitutional perspective and accountable service to the State cadre, managed through rules and consultation rather than leverage.",
+    "keywords": [
+      "All India Services",
+      "federal glue",
+      "cadre management",
+      "deputation",
+      "State autonomy",
+      "dual control"
+    ],
+    "sources": [
+      "Uploaded PubAd Paper II compiled and enriched notes",
+      "Constitution of India and relevant statutes",
+      "Second Administrative Reforms Commission where applicable"
+    ],
+    "verifiedAt": "16 Jul 2026",
+    "status": "verified",
+    "importedFrom": "pa2-25",
+    "matchScore": 0.71
+  },
+  "pubad2-81": {
+    "questionId": "pubad2-81",
+    "intro": "Police reform now combines the structural agenda of insulating and professionalising the police with procedural change in investigation and evidence under the new criminal laws.",
+    "points": [
+      {
+        "lead": "Prakash Singh core",
+        "detail": "State Security Commissions, merit-based leadership tenure, separation of investigation, Police Establishment Boards and complaints authorities target political misuse and weak accountability.",
+        "essential": true
+      },
+      {
+        "lead": "Implementation gap",
+        "detail": "States have adopted uneven laws and arrangements, often diluting independence, tenure and external complaints."
+      },
+      {
+        "lead": "New-law shift",
+        "detail": "Electronic processes, timelines, forensic emphasis and victim-related procedures seek faster, more evidence-based criminal justice."
+      },
+      {
+        "lead": "Capacity gap",
+        "detail": "Forensic laboratories, investigators, prosecutors, devices and training remain uneven; mandates can create backlogs without resources.",
+        "essential": true
+      },
+      {
+        "lead": "Structural-procedural link",
+        "detail": "Technology cannot correct arbitrary transfers, poor supervision or conflation of law-and-order pressure with investigation."
+      },
+      {
+        "lead": "Due process",
+        "detail": "Digital evidence, searches and custody require chain, disclosure, privacy and defence-access safeguards."
+      },
+      {
+        "lead": "Separation",
+        "detail": "Dedicated investigation personnel can develop skills and protect case quality from daily order duties.",
+        "essential": true
+      },
+      {
+        "lead": "Accountability",
+        "detail": "Independent complaints, custody oversight and public performance data should accompany stronger investigative tools."
+      },
+      {
+        "lead": "Federal implementation",
+        "detail": "Union standards, State ownership and funded transition plans must align police, forensics, prosecution and courts."
+      }
+    ],
+    "conclusion": "Procedural modernisation without structural independence digitises old pathologies; structural reform without capacity leaves professional ideals unimplemented.",
+    "keywords": [
+      "Prakash Singh",
+      "police reform",
+      "new criminal laws",
+      "separation of investigation",
+      "forensics",
+      "complaints authority"
+    ],
+    "sources": [
+      "Supreme Court judgment in Prakash Singh v. Union of India",
+      "New criminal laws, 2023",
+      "Uploaded PubAd Paper II compiled and enriched notes",
+      "Constitution of India and relevant statutes",
+      "Second Administrative Reforms Commission where applicable"
+    ],
+    "verifiedAt": "16 Jul 2026",
+    "status": "verified",
+    "importedFrom": "pa2-45",
+    "matchScore": 0.723
+  }
+}
