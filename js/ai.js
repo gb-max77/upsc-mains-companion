@@ -10,6 +10,36 @@ export function setApiKey(k) {
 }
 export function getApiKey() { return localStorage.getItem('anthropic-key') || ''; }
 
+// ---------- OpenAI (✨ actions on Bank model answers) ----------
+export function openaiAvailable() { return !!localStorage.getItem('openai-key'); }
+export function setOpenAIKey(k) {
+  if (k) localStorage.setItem('openai-key', k.trim());
+  else localStorage.removeItem('openai-key');
+}
+export function getOpenAIKey() { return localStorage.getItem('openai-key') || ''; }
+
+export async function callOpenAI(prompt) {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer ' + getOpenAIKey() },
+    body: JSON.stringify({
+      model: localStorage.getItem('openai-model') || 'gpt-5.1',
+      messages: [
+        { role: 'system', content: 'You are a UPSC CSE Mains mentor. Never invent committees, data, articles or case names; flag uncertainty with ⚠. Answers must stay handwritable in exam time.' },
+        { role: 'user', content: prompt },
+      ],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `OpenAI error ${res.status}`);
+  }
+  const data = await res.json();
+  const text = data.choices?.[0]?.message?.content || '';
+  if (!text) throw new Error('OpenAI returned an empty response');
+  return text;
+}
+
 // ---------- Gemini (model answers in the Answer drill) ----------
 export function geminiAvailable() { return !!localStorage.getItem('gemini-key'); }
 export function setGeminiKey(k) {

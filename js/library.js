@@ -4,7 +4,7 @@ import { DB, uid } from './db.js';
 import { extractLines } from './extract.js';
 import { parseStructure } from './parser.js';
 import { sheet, closeSheet, toast, escapeHtml } from './ui.js';
-import { setApiKey, getApiKey, setGeminiKey, getGeminiKey } from './ai.js';
+import { setApiKey, getApiKey, setGeminiKey, getGeminiKey, setOpenAIKey, getOpenAIKey } from './ai.js';
 import { FOLDER_ORDER, suggestFolder, folderOf, categoryOf } from './taxonomy.js';
 import { rebuildKnowledgeIndex, ensureIndexLoaded, getStats } from './analysis.js';
 
@@ -463,7 +463,10 @@ function showSettings() {
     <p class="muted tiny" style="margin-bottom:12px">Free: sign in at <b>aistudio.google.com/apikey</b> with your Google account → Create API key → paste here. Stored only in this browser.</p>
     <label class="tiny muted">Anthropic API key (optional — enables ✨ AI card polish)</label>
     <input type="password" id="st-key" placeholder="sk-ant-…" value="${escapeHtml(getApiKey())}" style="width:100%;margin:6px 0 4px">
-    <p class="muted tiny" style="margin-bottom:14px">Get one at console.anthropic.com. Stored only in this browser.</p>
+    <p class="muted tiny" style="margin-bottom:12px">Get one at console.anthropic.com. Stored only in this browser.</p>
+    <label class="tiny muted">OpenAI API key (optional — enables ✨ Polish / Extra points / Diagramise in the 📝 Bank)</label>
+    <input type="password" id="st-okey" placeholder="sk-…" value="${escapeHtml(getOpenAIKey())}" style="width:100%;margin:6px 0 4px">
+    <p class="muted tiny" style="margin-bottom:14px">Get one at platform.openai.com/api-keys. Stored only in this browser.</p>
     <p class="muted tiny" style="margin-bottom:14px">⌨️ Shortcuts: <b>Space</b> play/pause · <b>←/→</b> previous / next line</p>
     <div class="row">
       <button class="btn danger sm" id="st-reset">Reset all app data</button>
@@ -488,6 +491,7 @@ function showSettings() {
     root.querySelector('#st-save').onclick = () => {
       setApiKey(root.querySelector('#st-key').value);
       setGeminiKey(root.querySelector('#st-gkey').value);
+      setOpenAIKey(root.querySelector('#st-okey').value);
       closeSheet();
       toast('Settings saved');
     };

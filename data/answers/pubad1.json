@@ -1,0 +1,31 @@
+{
+  "pubad1-15": {
+    "directive": "examine",
+    "lens": "Both halves are compulsory: ideal type's relevance AND the post-Weberian arc ending at the NWS — skipping Pollitt & Bouckaert costs the differentiator marks.",
+    "cluster": "weber",
+    "intro": [
+      {"t": "thinker", "x": "*Max Weber's* legal-rational bureaucracy — hierarchy, written rules, impersonality, merit, fixed jurisdiction — is an **ideal type**, a yardstick rather than a photograph. He feared its perfection would trap modernity in an **iron cage** of rationality; the statement holds the cage closed because bureaucracy *worked*."},
+      {"t": "concept", "x": "The **iron cage** is rationality **over-achieving, not failing** — bureaucracy's calculability succeeded so completely that rule-bound order became inescapable."}
+    ],
+    "body": [
+      {"h": "The ideal type's success — and the cage it built", "p": [
+        {"x": "**Calculability & rule-of-law:** impersonal rules made the state predictable — the root of its legitimacy (*sine ira et studio*).", "va": "Weber", "vt": "thinker", "vf": "n"},
+        {"x": "**Merit, tenure, career** professionalised administration — *Indian bridge:* **UPSC, Art 311**.", "va": "Art 311", "vt": "doctrine", "vf": "w"},
+        {"x": "Success bred **dysfunction**: *Merton* — **goal displacement**; *Michels* — **iron law of oligarchy**.", "va": "Merton; Michels", "vt": "thinker", "vf": "w"},
+        {"x": "**Bureaupathology:** rules become ends — *Peter Principle, Parkinson's Law*, red tape.", "va": "Peter; Parkinson", "vt": "thinker", "vf": "w"},
+        {"x": "The cage is thus rationality **over-achieving, not failing** — obedience to rules outlived their purpose.", "vf": "n"}
+      ]},
+      {"h": "Post-Weberian developments → the Neo-Weberian State", "p": [
+        {"x": "**NPM revolt** (*Hood, 1991*): managerialism attacked rule-boundness — but **fragmented accountability** ('hollow state').", "va": "Hood 1991", "vt": "thinker", "vf": "w"},
+        {"x": "**Neo-Weberian State** (*Pollitt & Bouckaert, 2004*): modernise Weber — keep rule-of-law and merit, **add citizen-orientation, results, professional culture**.", "va": "Pollitt & Bouckaert", "vt": "thinker", "vf": "w"},
+        {"x": "*Indian bridge:* **Mission Karmayogi** re-tools the steel frame with competencies without scrapping it; **e-Office** digitises the file, not the law.", "va": "Mission Karmayogi", "vt": "scheme", "vf": "w"}
+      ]}
+    ],
+    "wf": ["Retain **legality and merit** while adding **responsiveness and results** — reform, don't dismantle, the frame."],
+    "conc": "Weber's cage has not been escaped but **re-furnished** — the Neo-Weberian State keeps the iron of legality while opening a window to the citizen.",
+    "diag": {"k": "flow", "d": "Weber ideal type → dysfunctions (Merton/Michels) → NPM revolt (Hood) → Neo-Weberian State (rule-of-law + citizen-orientation)"},
+    "mne": "**I-CAGE**: Ideal type · Calculability · Anomalies (Merton/Michels) · Governance revolt (NPM) · End-state NWS",
+    "flash": ["**Ideal type** = yardstick, not photograph", "Cage closed via **success**: calculability, merit (*UPSC, Art 311*)", "Dysfunctions: *Merton* **goal displacement**, *Michels* **oligarchy**", "**NPM** (*Hood 1991*) attacked rules, fragmented accountability", "**NWS** (*Pollitt & Bouckaert*): keep legality + add citizen-orientation — *Karmayogi*"],
+    "angle": "Sibling stems: S5 1(b) wants 'ideal type ≠ empirical description' (methodology axis); this stem wants the success-paradox + reform arc."
+  }
+}

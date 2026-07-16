@@ -1,11 +1,12 @@
-const CACHE = 'upsc-companion-v9';
+const CACHE = 'upsc-companion-v10';
 const ASSETS = [
   './', 'index.html', 'css/style.css',
   'js/app.js', 'js/db.js', 'js/parser.js', 'js/extract.js', 'js/tts.js',
   'js/player.js', 'js/cards.js', 'js/quiz.js', 'js/practice.js', 'js/library.js',
+  'js/answers.js',
   'js/ai.js', 'js/ui.js', 'js/diagrams.js', 'js/entities.js', 'js/taxonomy.js', 'js/analysis.js',
   'libs/mammoth.browser.min.js', 'libs/pdf.min.mjs', 'libs/pdf.worker.min.mjs',
-  'data/seed.json', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
+  'data/seed.json', 'data/banks.json', 'manifest.webmanifest', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 
 self.addEventListener('install', e => {

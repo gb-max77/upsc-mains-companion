@@ -4,6 +4,7 @@ import { mountListen, reloadListen } from './player.js';
 import { mountCards, reloadCards } from './cards.js';
 import { mountQuiz, reloadQuiz } from './quiz.js';
 import { mountPractice, reloadPractice } from './practice.js';
+import { mountAnswers } from './answers.js';
 import { mountLibrary, setLibraryChangeHandler } from './library.js';
 import { speech } from './tts.js';
 import { rebuildKnowledgeIndex, ensureIndexLoaded } from './analysis.js';
@@ -13,6 +14,7 @@ const mounts = {
   cards: { fn: mountCards, done: false },
   quiz: { fn: mountQuiz, done: false },
   practice: { fn: mountPractice, done: false },
+  answers: { fn: mountAnswers, done: false },
   library: { fn: mountLibrary, done: false },
 };
 
