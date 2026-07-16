@@ -11,12 +11,12 @@ export function setApiKey(k) {
 export function getApiKey() { return localStorage.getItem('anthropic-key') || ''; }
 
 // ---------- OpenAI (✨ actions on Bank model answers) ----------
-export function openaiAvailable() { return !!localStorage.getItem('openai-key'); }
+export function openaiAvailable() { return !!sessionStorage.getItem('openai-key'); }
 export function setOpenAIKey(k) {
-  if (k) localStorage.setItem('openai-key', k.trim());
-  else localStorage.removeItem('openai-key');
+  if (k) sessionStorage.setItem('openai-key', k.trim());
+  else sessionStorage.removeItem('openai-key');
 }
-export function getOpenAIKey() { return localStorage.getItem('openai-key') || ''; }
+export function getOpenAIKey() { return sessionStorage.getItem('openai-key') || ''; }
 
 export async function callOpenAI(prompt) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {

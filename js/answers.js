@@ -12,8 +12,8 @@ import { ensureIndexLoaded, notesRefsFor } from './analysis.js';
 let root = null;
 let banks = [];
 const answers = {};           // paperId -> {qid: answer} | null (fetched, none yet)
-let dropped = new Set();
-let nav = { view: 'home', paper: null, q: null, mode: 'full' };
+let dropped = new Set(); // retained storage key; now means "marked for revision"
+let nav = { view: 'home', paper: null, q: null, mode: 'full', answerMode: 'bank', search: '', limit: null };
 
 // app.js calls this when the user leaves the Bank tab — the shared speech
 // engine must hand its callbacks back to the Listen player before it's reused
@@ -36,12 +36,45 @@ async function loadAnswers(pid) {
   if (pid in answers) return answers[pid];
   try {
     const res = await fetch(`data/answers/${pid}.json`);
-    answers[pid] = res.ok ? await res.json() : null;
+    if (!res.ok) answers[pid] = null;
+    else {
+      const raw = await res.json();
+      answers[pid] = Object.fromEntries(Object.entries(raw).map(([id, a]) => [id, normaliseAnswer(a)]));
+    }
   } catch { answers[pid] = null; }
   return answers[pid];
 }
 
-const qid = (pid, n) => `${pid}-${n}`;
+function normaliseAnswer(a) {
+  if (a.body) return a;
+  const diagram = a.diagram ? (/→/.test(a.diagram) ? { k: 'flow', d: a.diagram } : { k: 'hub', d: a.diagram.replace(/:/, '|').replace(/,/g, '|') }) : null;
+  return {
+    ...a,
+    corePoints: a.points || [],
+    intro: [{ t: 'direct', x: a.intro }],
+    body: [{ h: 'Core analysis', p: (a.points || []).map(pt => ({ x: `**${pt.lead}** — ${pt.detail}`, vf: 'w' })) }],
+    conc: a.conclusion,
+    flash: a.keywords || [],
+    diag: diagram,
+  };
+}
+
+function budgetAnswer(a, q, limit) {
+  if (!a.corePoints?.length) return a;
+  const ordered = [...a.corePoints.filter(p => p.essential), ...a.corePoints.filter(p => !p.essential)];
+  const selected = [];
+  const introWords = plain(a.intro[0].x).split(/\s+/).length;
+  const concWords = plain(a.conc || '').split(/\s+/).length;
+  let used = introWords + concWords;
+  for (const pt of ordered) {
+    const n = plain(`${pt.lead} ${pt.detail}`).split(/\s+/).length;
+    if (selected.length < 3 || used + n <= limit + 10) { selected.push(pt); used += n; }
+  }
+  selected.sort((x, y) => a.corePoints.indexOf(x) - a.corePoints.indexOf(y));
+  return { ...a, body: [{ h: 'Core analysis', p: selected.map(pt => ({ x: `**${pt.lead}** — ${pt.detail}`, vf: 'w' })) }] };
+}
+
+const qid = (pid, q) => q.id || `${pid}-${q.n}`;
 const paper = () => banks.find(p => p.id === nav.paper);
 const allQs = (p) => p.sections.flatMap(s => s.qs);
 
@@ -79,12 +112,12 @@ async function renderHome() {
   const cards = await Promise.all(banks.map(async p => {
     const qs = allQs(p);
     const ans = await loadAnswers(p.id);
-    const done = ans ? qs.filter(q => ans[qid(p.id, q.n)]).length : 0;
-    const drop = qs.filter(q => dropped.has(qid(p.id, q.n))).length;
+    const done = ans ? qs.filter(q => ans[qid(p.id, q)]).length : 0;
+    const drop = qs.filter(q => dropped.has(qid(p.id, q))).length;
     return `<button class="bank-card" data-p="${p.id}">
       <span class="bank-ic">${p.icon}</span>
       <span class="bank-name">${p.short}${p.optional ? ' <span class="tiny muted">optional</span>' : ''}</span>
-      <span class="bank-meta">${qs.length - drop} final${drop ? ` · ${drop} dropped` : ''}</span>
+      <span class="bank-meta">${qs.length} final${drop ? ` · ${drop} for revision` : ''}</span>
       <span class="bank-prog ${done ? '' : 'none'}">${done ? `✅ ${done}/${qs.length} answered` : '⏳ answers pending'}</span>
     </button>`;
   }));
@@ -106,13 +139,16 @@ async function renderPaper() {
       <button class="btn ghost sm" id="bk-back">←</button>
       <div><b>${p.icon} ${p.title}</b><div class="tiny muted">${allQs(p).length} Qs · tap a section</div></div>
     </div>
+    <div class="bank-search-wrap"><input id="bk-search" type="search" placeholder="Search questions, topics and branches…" value="${escapeHtml(nav.search)}"></div>
     <div class="bank-scroll">${p.sections.map((s, si) => `
       <div class="bank-sec">
         <button class="bank-sech" data-si="${si}">${escapeHtml(s.t)} <span class="muted tiny">${s.qs.length}</span></button>
         <div class="bank-qs" style="${open[si] ? '' : 'display:none'}">
           ${s.qs.map(q => {
-            const id = qid(p.id, q.n), has = ans && ans[id], off = dropped.has(id);
-            return `<button class="bank-q ${off ? 'off' : ''}" data-q="${q.n}">
+            const id = qid(p.id, q), has = ans && ans[id], off = dropped.has(id);
+            const hay = `${q.q} ${q.branch || ''} ${s.t}`.toLowerCase();
+            if (nav.search && !hay.includes(nav.search.toLowerCase())) return '';
+            return `<button class="bank-q ${off ? 'revision' : ''}" data-q="${q.n}">
               <span class="bank-qn">${q.n}</span>
               <span class="bank-qt">${escapeHtml(q.q.length > 110 ? q.q.slice(0, 110) + '…' : q.q)}</span>
               <span class="bank-qm">${q.m}m${q.tier ? ` · T${q.tier}` : ''}${q.topic ? ' · 🏷' : ''} ${has ? '✅' : ''}</span>
@@ -122,25 +158,29 @@ async function renderPaper() {
       </div>`).join('')}
     </div>`;
   root.querySelector('#bk-back').onclick = () => { nav = { ...nav, view: 'home' }; render(); };
+  const search = root.querySelector('#bk-search');
+  search.oninput = () => { nav.search = search.value; renderPaper(); root.querySelector('#bk-search')?.focus(); };
   root.querySelectorAll('.bank-sech').forEach(h => h.onclick = async () => {
     open[h.dataset.si] = !open[h.dataset.si];
     await DB.setKV('bank-open-' + p.id, open);
     h.nextElementSibling.style.display = open[h.dataset.si] ? '' : 'none';
   });
-  root.querySelectorAll('.bank-q').forEach(b => b.onclick = () => { nav = { ...nav, view: 'q', q: +b.dataset.q, mode: 'full' }; render(); });
+  root.querySelectorAll('.bank-q').forEach(b => b.onclick = () => { nav = { ...nav, view: 'q', q: +b.dataset.q, mode: 'full', limit: null }; render(); });
 }
 
 /* ---------- question: answer viewer ---------- */
 async function renderQuestion() {
   const p = paper();
   const q = allQs(p).find(x => x.n === nav.q);
-  const id = qid(p.id, q.n);
-  const ans = (await loadAnswers(p.id))?.[id];
+  const id = qid(p.id, q);
+  const baseAnswer = (await loadAnswers(p.id))?.[id];
+  const limit = nav.limit && q.lengths?.includes(nav.limit) ? nav.limit : q.w;
+  const ans = baseAnswer ? budgetAnswer(baseAnswer, q, limit) : null;
   const dir = ans?.directive || directiveOf(q.q);
   const time = Math.round(q.m * 0.72);
   const off = dropped.has(id);
   const wc = ans ? wordCount(ans) : 0;
-  const wcOk = ans && wc >= q.w * 0.9 && wc <= q.w * 1.1;
+  const wcOk = ans && wc >= limit * 0.85 && wc <= limit * 1.1;
   // "understand like a UPSC expert": entities in the question + answer matched
   // against everything uploaded in the Library (Knowledge Engine all-facts index)
   const noteRefs = notesRefsFor(ans ? walk(ans, q).join(' ') : q.q, 6);
@@ -151,22 +191,31 @@ async function renderQuestion() {
       <div class="row" style="gap:6px;flex:1">
         <span class="chip on">${q.m} marks</span>
         <span class="chip">${dir}</span><span class="chip">⏱ ${time} min</span>
-        ${ans ? `<span class="chip ${wcOk ? 'wc-ok' : 'wc-bad'}" title="exam-written words vs the ${q.w}-word limit">${wc}/${q.w}w</span>` : `<span class="chip">${q.w}w</span>`}
+        ${ans ? `<span class="chip ${wcOk ? 'wc-ok' : 'wc-bad'}" title="exam-written words vs the ${limit}-word limit">${wc}/${limit}w</span>` : `<span class="chip">${limit}w</span>`}
       </div>
-      <button class="btn ghost sm" id="bk-drop" title="drop from final list">${off ? '♻️' : '🗑'}</button>
+      <button class="btn ghost sm ${off ? 'revision-on' : ''}" id="bk-drop" title="mark for revision">${off ? '★' : '☆'}</button>
     </div>
     <div class="bank-scroll">
-      <div class="bank-qfull ${off ? 'off' : ''}" data-ln="0">${escapeHtml(q.q)}
+      <div class="bank-qfull" data-ln="0">${escapeHtml(q.q)}
         <div class="tiny muted" style="margin-top:6px">${escapeHtml(q.src)}${q.topic ? ' · 🏷 topic title — frame the stem yourself' : ''}${q.theme ? ' · ' + escapeHtml(q.theme) : ''}</div>
       </div>
       ${ans ? `
+      <div class="chiprow word-options" style="padding:8px 14px 0">
+        ${(q.lengths || [q.w]).map(w => `<button class="chip ${w === limit ? 'on' : ''}" data-limit="${w}">${w} words</button>`).join('')}
+      </div>
+      <div class="seg answer-source" style="margin:10px 14px 0">
+        <button class="seg-btn ${nav.answerMode === 'bank' ? 'on' : ''}" data-source="bank">Bank</button>
+        <button class="seg-btn ${nav.answerMode === 'ai' ? 'on' : ''}" data-source="ai">AI Polish</button>
+      </div>
       <div class="seg" style="margin:10px 14px 0">
         ${[['full', '📄 Full'], ['skel', '🦴 Skeleton'], ['card', '🃏 Card']].map(([v, l]) =>
           `<button class="seg-btn ${nav.mode === v ? 'on' : ''}" data-m="${v}">${l}</button>`).join('')}
       </div>
       <div class="row" style="padding:8px 14px 0;gap:8px">
         <button class="btn sm" id="bk-audio">🔊 Listen</button>
-        <button class="btn sm" id="bk-ai">✨ AI</button>
+        <button class="btn sm" id="bk-copy">⧉ Copy</button>
+        <button class="btn sm" id="bk-visual">◉ Visual</button>
+        <button class="btn sm" id="bk-recall">◐ Recall</button>
         ${ans.lens ? `<span class="tiny muted" style="flex:1">🎯 ${escapeHtml(ans.lens)}</span>` : ''}
       </div>
       <div id="bk-answer">${renderAnswer(ans, q)}</div>` : `
@@ -185,7 +234,7 @@ async function renderQuestion() {
   root.querySelector('#bk-drop').onclick = async () => {
     off ? dropped.delete(id) : dropped.add(id);
     await DB.setKV('bank-dropped', [...dropped]);
-    toast(off ? '♻️ Back in the final list' : '🗑 Dropped from final list');
+    toast(off ? 'Removed from revision' : '★ Marked for revision');
     render();
   };
   if (!ans) return;
@@ -197,7 +246,14 @@ async function renderQuestion() {
     wireAnswer(ans, q);
   });
   root.querySelector('#bk-audio').onclick = () => toggleBankAudio(ans, q);
-  root.querySelector('#bk-ai').onclick = () => aiSheet(ans, q);
+  root.querySelectorAll('[data-limit]').forEach(b => b.onclick = () => { nav.limit = +b.dataset.limit; render(); });
+  root.querySelector('#bk-copy').onclick = () => copyAnswer(ans, q);
+  root.querySelector('#bk-visual').onclick = () => visualSheet(ans, q);
+  root.querySelector('#bk-recall').onclick = () => activeRecall(ans, q);
+  root.querySelectorAll('[data-source]').forEach(b => b.onclick = () => {
+    nav.answerMode = b.dataset.source;
+    if (nav.answerMode === 'ai') aiSheet(ans, q); else render();
+  });
   wireAnswer(ans, q);
 }
 
@@ -229,8 +285,15 @@ function renderAnswer(a, q) {
   const wf = a.wf?.length
     ? `<h4 class="ans-h aud" data-ln="${ln++}">Way forward</h4><ul class="ans-ul">${a.wf.map(x => `<li class="aud" data-ln="${ln++}">${md(x)}</li>`).join('')}</ul>` : '';
   const conc = a.conc ? `<p class="ans-conc aud" data-ln="${ln++}">${md(a.conc)}</p>` : '';
+  const branch = a.branchAdaptation ? `<div class="branch-adapt">
+    <h4 class="ans-h">Branch adaptation — standalone-ready</h4>
+    <p>${md(a.branchAdaptation.framing)}</p>
+    ${(a.branchAdaptation.retain || []).length ? `<p><b>Retain:</b> ${a.branchAdaptation.retain.map(md).join(' · ')}</p>` : ''}
+    ${(a.branchAdaptation.add || []).length ? `<ul class="ans-ul">${a.branchAdaptation.add.map(pt => `<li><b class="au">${md(pt.lead)}</b> — ${md(pt.detail)}</li>`).join('')}</ul>` : ''}
+    <p class="ans-conc">${md(a.branchAdaptation.verdict)}</p>
+  </div>` : '';
   return `<div class="bank-ans">
-    ${introA}${introB}${body}${wf}${conc}
+    ${introA}${introB}${body}${wf}${conc}${branch}
     ${a.diag ? renderDiag(a.diag) : ''}
     ${a.mne ? `<p class="ans-mne">🧠 ${md(a.mne)}</p>` : ''}
   </div>`;
@@ -329,6 +392,41 @@ function stopBankAudio() {
   saved = null; bankPlaying = false;
   const b = root && root.querySelector('#bk-audio'); if (b) b.textContent = '🔊 Listen';
   root && root.querySelectorAll('.ans-hl').forEach(el => el.classList.remove('ans-hl'));
+}
+
+function plainAnswer(a, q) {
+  return [`Q. ${q.q}`, plain(a.intro?.[0]?.x || ''), ...(a.body || []).flatMap(s => [plain(s.h), ...s.p.map(pt => '• ' + plain(pt.x))]), a.conc ? 'Conclusion: ' + plain(a.conc) : ''].filter(Boolean).join('\n');
+}
+
+async function copyAnswer(a, q) {
+  try { await navigator.clipboard.writeText(plainAnswer(a, q)); toast('Model answer copied'); }
+  catch { toast('Copy failed — select the answer manually'); }
+}
+
+function visualSheet(a, q) {
+  const leads = (a.body || []).flatMap(s => s.p).map(pt => golds(pt.x)[0] || plain(pt.x).split(' ').slice(0, 4).join(' ')).slice(0, 6);
+  const hub = `CENTRE: ${plain(q.q).split(/\s+/).slice(0, 7).join(' ')}…\nSPOKES: ${leads.join(' | ')}`;
+  const flow = leads.slice(0, 5).join(' → ');
+  const table = leads.slice(0, 6).map((x, i) => `${i % 2 ? 'Response' : 'Issue'} | ${x}`).join('\n');
+  sheet(`<h3>◉ Exam-drawable visual toolkit</h3>
+    <p class="tiny muted">Choose one. Each is designed to reproduce in roughly 30 seconds.</p>
+    <div class="visual-option"><b>Hub-and-spoke</b><pre>${escapeHtml(hub)}</pre></div>
+    <div class="visual-option"><b>Flowchart</b><pre>${escapeHtml(flow)}</pre></div>
+    <div class="visual-option"><b>Two-column table</b><pre>${escapeHtml(table)}</pre></div>
+    ${a.diag ? `<div class="visual-option"><b>Bank cue</b>${renderDiag(a.diag)}</div>` : ''}
+    <div class="row"><div class="spacer"></div><button class="btn" id="visual-close">Close</button></div>`,
+    r => r.querySelector('#visual-close').onclick = closeSheet);
+}
+
+function activeRecall(a, q) {
+  sheet(`<h3>◐ Active recall</h3><div class="recall-question">${escapeHtml(q.q)}</div>
+    <textarea id="recall-attempt" rows="7" placeholder="Write your intro, headings and load-bearing keywords from memory…"></textarea>
+    <button class="btn primary" id="recall-reveal">Reveal skeleton</button>
+    <div id="recall-answer" style="display:none">${renderSkeleton(a)}</div>
+    <div class="row"><div class="spacer"></div><button class="btn" id="recall-close">Close</button></div>`, r => {
+      r.querySelector('#recall-reveal').onclick = () => { r.querySelector('#recall-answer').style.display = ''; };
+      r.querySelector('#recall-close').onclick = closeSheet;
+    });
 }
 
 /* ---------- ✨ OpenAI actions (opt-in, user's key) ---------- */

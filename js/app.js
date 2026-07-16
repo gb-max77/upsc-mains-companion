@@ -3,8 +3,7 @@ import { DB } from './db.js';
 import { mountListen, reloadListen } from './player.js';
 import { mountCards, reloadCards } from './cards.js';
 import { mountQuiz, reloadQuiz } from './quiz.js';
-import { mountPractice, reloadPractice } from './practice.js';
-import { mountAnswers, leaveAnswers } from './answers.js';
+import { mountPractice, reloadPractice, leavePractice } from './practice.js';
 import { mountLibrary, setLibraryChangeHandler } from './library.js';
 import { speech } from './tts.js';
 import { rebuildKnowledgeIndex, ensureIndexLoaded } from './analysis.js';
@@ -14,13 +13,12 @@ const mounts = {
   cards: { fn: mountCards, done: false },
   quiz: { fn: mountQuiz, done: false },
   practice: { fn: mountPractice, done: false },
-  answers: { fn: mountAnswers, done: false },
   library: { fn: mountLibrary, done: false },
 };
 
 async function showView(name) {
   const prev = document.querySelector('.view.active')?.id;
-  if (prev === 'view-answers' && name !== 'answers') leaveAnswers();
+  if (prev === 'view-practice' && name !== 'practice') leavePractice();
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.view === name));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
   const m = mounts[name];

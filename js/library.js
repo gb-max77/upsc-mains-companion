@@ -464,9 +464,9 @@ function showSettings() {
     <label class="tiny muted">Anthropic API key (optional — enables ✨ AI card polish)</label>
     <input type="password" id="st-key" placeholder="sk-ant-…" value="${escapeHtml(getApiKey())}" style="width:100%;margin:6px 0 4px">
     <p class="muted tiny" style="margin-bottom:12px">Get one at console.anthropic.com. Stored only in this browser.</p>
-    <label class="tiny muted">OpenAI API key (optional — enables ✨ Polish / Extra points / Diagramise in the 📝 Bank)</label>
+    <label class="tiny muted">OpenAI API key (optional — enables AI Polish in Answer Writing ▸ Model answers)</label>
     <input type="password" id="st-okey" placeholder="sk-…" value="${escapeHtml(getOpenAIKey())}" style="width:100%;margin:6px 0 4px">
-    <p class="muted tiny" style="margin-bottom:14px">Get one at platform.openai.com/api-keys. Stored only in this browser.</p>
+    <p class="muted tiny" style="margin-bottom:14px">Use only your own key. It is kept for this browser session and cleared when the tab is closed.</p>
     <p class="muted tiny" style="margin-bottom:14px">⌨️ Shortcuts: <b>Space</b> play/pause · <b>←/→</b> previous / next line</p>
     <div class="row">
       <button class="btn danger sm" id="st-reset">Reset all app data</button>

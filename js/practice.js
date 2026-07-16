@@ -8,6 +8,7 @@ import { escapeHtml, sheet, closeSheet, toast } from './ui.js';
 import { geminiAvailable, callGemini, mainsAnswerPrompt } from './ai.js';
 import { suggestFolder, categoryOf } from './taxonomy.js';
 import { ensureIndexLoaded } from './analysis.js';
+import { mountAnswers, leaveAnswers } from './answers.js';
 
 // ---------- paper-specific high-scoring tacticalities ----------
 const TACTICS = {
@@ -60,20 +61,34 @@ async function crossDocSnippets(question, excludeDocId, n = 4) {
 const TIMES = [7.5, 9.5];                 // minutes
 const WORDS = [150, 200, 250, 300];       // word limits
 
-let el, docs = [], current = null, currentQ = '', timer = null, remaining = 0, paused = false;
+let host, el, docs = [], current = null, currentQ = '', timer = null, remaining = 0, paused = false;
 let mins = 9.5, wordLimit = 250, qMode = 'questions'; // 'questions' | 'themes'
 let maSource = localStorage.getItem('ma-source') || 'notes'; // 'notes' | 'gemini' | 'both'
 
 const answerDocs = async () => (await DB.allDocs()).filter(d => !d.uses || d.uses.answer !== false);
 
 export async function mountPractice(root) {
-  el = root;
+  host = root;
   await ensureIndexLoaded();
   docs = await answerDocs();
-  renderIdle();
+  await renderWorkspace(localStorage.getItem('answer-pane') || 'models');
 }
 
-export async function reloadPractice() { if (el) { docs = await answerDocs(); if (!timer) renderIdle(); } }
+export async function reloadPractice() { docs = await answerDocs(); if (host && !timer) await renderWorkspace(localStorage.getItem('answer-pane') || 'models'); }
+export function leavePractice() { leaveAnswers(); stopTimer(); }
+
+async function renderWorkspace(mode) {
+  leaveAnswers();
+  localStorage.setItem('answer-pane', mode);
+  host.innerHTML = `<div class="answer-workspace-tabs seg">
+    <button class="seg-btn ${mode === 'write' ? 'on' : ''}" data-pane="write">✍️ Timed writing</button>
+    <button class="seg-btn ${mode === 'models' ? 'on' : ''}" data-pane="models">📝 Model answers</button>
+  </div><div id="answer-workspace-pane" class="answer-workspace-pane"></div>`;
+  host.querySelectorAll('[data-pane]').forEach(b => b.onclick = () => renderWorkspace(b.dataset.pane));
+  const pane = host.querySelector('#answer-workspace-pane');
+  if (mode === 'models') { el = null; await mountAnswers(pane); }
+  else { el = pane; renderIdle(); }
+}
 
 // ---------- predicted-question bank ----------
 // pulls real question lines out of the notes (numbered question banks,
