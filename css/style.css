@@ -356,3 +356,7 @@ progress{width:100%}
 .bank-notes-h{font-weight:700;font-size:13px;margin-bottom:8px}
 .bank-note{font-size:12px;line-height:1.5;padding:4px 0;border-top:1px solid var(--line)}
 .bank-note b{color:var(--acc2)}
+
+/* Bank branches (🌿 variant angles) */
+.bank-qt b{color:var(--tx)}
+.bank-notes .bank-note b{color:var(--acc2)}

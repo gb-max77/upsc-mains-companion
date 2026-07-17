@@ -1,31 +1,354 @@
 {
-  "pubad1-15": {
-    "directive": "examine",
-    "lens": "Both halves are compulsory: ideal type's relevance AND the post-Weberian arc ending at the NWS — skipping Pollitt & Bouckaert costs the differentiator marks.",
-    "cluster": "weber",
-    "intro": [
-      {"t": "thinker", "x": "*Max Weber's* legal-rational bureaucracy — hierarchy, written rules, impersonality, merit, fixed jurisdiction — is an **ideal type**, a yardstick rather than a photograph. He feared its perfection would trap modernity in an **iron cage** of rationality; the statement holds the cage closed because bureaucracy *worked*."},
-      {"t": "concept", "x": "The **iron cage** is rationality **over-achieving, not failing** — bureaucracy's calculability succeeded so completely that rule-bound order became inescapable."}
-    ],
-    "body": [
-      {"h": "The ideal type's success — and the cage it built", "p": [
-        {"x": "**Legal-rational authority** displaced traditional and charismatic rule — obedience to impersonal rules, not persons (*sine ira et studio*).", "va": "Weber", "vt": "thinker", "vf": "n"},
-        {"x": "**Calculability & rule-of-law:** written records and fixed jurisdiction made the state predictable — the root of its legitimacy.", "va": "Weber", "vt": "thinker", "vf": "n"},
-        {"x": "**Merit, tenure, career** professionalised administration — *Indian bridge:* **UPSC recruitment, Art 311** protections.", "va": "Art 311", "vt": "doctrine", "vf": "w"},
-        {"x": "**Ideal type as yardstick:** an analytic measure reality never equals — Weber described a tendency, not a destiny.", "va": "Weber", "vt": "thinker", "vf": "n"},
-        {"x": "Success bred **dysfunction**: *Merton* — **goal displacement**; *Michels* — **iron law of oligarchy**.", "va": "Merton; Michels", "vt": "thinker", "vf": "w"},
-        {"x": "**Bureaupathology:** rules become ends — *Peter Principle, Parkinson's Law*, red tape as rationality **over-achieving, not failing**.", "va": "Peter; Parkinson", "vt": "thinker", "vf": "w"}
-      ]},
-      {"h": "Post-Weberian developments → the Neo-Weberian State", "p": [
-        {"x": "**NPM revolt** (*Hood, 1991*): markets and managerialism attacked rule-boundness — but agencification **fragmented accountability** into a 'hollow state'.", "va": "Hood 1991", "vt": "thinker", "vf": "w"},
-        {"x": "**Neo-Weberian State** (*Pollitt & Bouckaert, 2004*): reaffirm the state, rule-of-law and merit — **add citizen-orientation, results-focus and professional service culture**.", "va": "Pollitt & Bouckaert 2004", "vt": "thinker", "vf": "w"},
-        {"x": "The NWS is **synthesis, not surrender** — Weber's skeleton with a service-delivery face.", "vf": "n"},
-        {"x": "*Indian bridge:* **Mission Karmayogi** re-tools the steel frame with competencies; **e-Office** digitises the file, not the law — though algorithmic rules risk a **digital iron cage**.", "va": "Mission Karmayogi", "vt": "scheme", "vf": "w"}
-      ]}
-    ],
-    "wf": ["Retain **legality and merit** while grafting on **responsiveness, digital transparency and outcome accountability** — reform, don't dismantle, the frame."],
-    "conc": "Weber's cage has not been escaped but **re-furnished** — the Neo-Weberian State keeps the iron of legality while opening a window to the citizen.",
-    "diag": {"k": "flow", "d": "Weber ideal type → dysfunctions (Merton/Michels) → NPM revolt (Hood) → Neo-Weberian State (rule-of-law + citizen-orientation)"},
-    "flash": ["**Ideal type** = yardstick, not photograph", "Cage closed via **success**: calculability, merit (*UPSC, Art 311*)", "Dysfunctions: *Merton* **goal displacement**, *Michels* **oligarchy**", "**NPM** (*Hood 1991*) attacked rules, fragmented accountability", "**NWS** (*Pollitt & Bouckaert*): keep legality + add citizen-orientation — *Karmayogi*"]
-  }
+ "pubad1-11": {
+  "directive": "examine",
+  "lens": "Both halves are compulsory: ideal type's relevance AND the post-Weberian arc ending at the NWS — skipping Pollitt & Bouckaert costs the differentiator marks.",
+  "cluster": "weber",
+  "intro": [
+   {
+    "t": "thinker",
+    "x": "*Max Weber's* legal-rational bureaucracy — hierarchy, written rules, impersonality, merit, fixed jurisdiction — is an **ideal type**, a yardstick rather than a photograph. He feared its perfection would trap modernity in an **iron cage** of rationality; the statement holds the cage closed because bureaucracy *worked*."
+   },
+   {
+    "t": "concept",
+    "x": "The **iron cage** is rationality **over-achieving, not failing** — bureaucracy's calculability succeeded so completely that rule-bound order became inescapable."
+   }
+  ],
+  "body": [
+   {
+    "h": "The ideal type's success — and the cage it built",
+    "p": [
+     {
+      "x": "**Legal-rational authority** displaced traditional and charismatic rule — obedience to impersonal rules, not persons (*sine ira et studio*).",
+      "va": "Weber",
+      "vt": "thinker",
+      "vf": "n"
+     },
+     {
+      "x": "**Calculability & rule-of-law:** written records and fixed jurisdiction made the state predictable — the root of its legitimacy.",
+      "va": "Weber",
+      "vt": "thinker",
+      "vf": "n"
+     },
+     {
+      "x": "**Merit, tenure, career** professionalised administration — *Indian bridge:* **UPSC recruitment, Art 311** protections.",
+      "va": "Art 311",
+      "vt": "doctrine",
+      "vf": "w"
+     },
+     {
+      "x": "**Ideal type as yardstick:** an analytic measure reality never equals — Weber described a tendency, not a destiny.",
+      "va": "Weber",
+      "vt": "thinker",
+      "vf": "n"
+     },
+     {
+      "x": "Success bred **dysfunction**: *Merton* — **goal displacement**; *Michels* — **iron law of oligarchy**.",
+      "va": "Merton; Michels",
+      "vt": "thinker",
+      "vf": "w"
+     },
+     {
+      "x": "**Bureaupathology:** rules become ends — *Peter Principle, Parkinson's Law*, red tape as rationality **over-achieving, not failing**.",
+      "va": "Peter; Parkinson",
+      "vt": "thinker",
+      "vf": "w"
+     }
+    ]
+   },
+   {
+    "h": "Post-Weberian developments → the Neo-Weberian State",
+    "p": [
+     {
+      "x": "**NPM revolt** (*Hood, 1991*): markets and managerialism attacked rule-boundness — but agencification **fragmented accountability** into a 'hollow state'.",
+      "va": "Hood 1991",
+      "vt": "thinker",
+      "vf": "w"
+     },
+     {
+      "x": "**Neo-Weberian State** (*Pollitt & Bouckaert, 2004*): reaffirm the state, rule-of-law and merit — **add citizen-orientation, results-focus and professional service culture**.",
+      "va": "Pollitt & Bouckaert 2004",
+      "vt": "thinker",
+      "vf": "w"
+     },
+     {
+      "x": "The NWS is **synthesis, not surrender** — Weber's skeleton with a service-delivery face.",
+      "vf": "n"
+     },
+     {
+      "x": "*Indian bridge:* **Mission Karmayogi** re-tools the steel frame with competencies; **e-Office** digitises the file, not the law — though algorithmic rules risk a **digital iron cage**.",
+      "va": "Mission Karmayogi",
+      "vt": "scheme",
+      "vf": "w"
+     }
+    ]
+   }
+  ],
+  "wf": [
+   "Retain **legality and merit** while grafting on **responsiveness, digital transparency and outcome accountability** — reform, don't dismantle, the frame."
+  ],
+  "conc": "Weber's cage has not been escaped but **re-furnished** — the Neo-Weberian State keeps the iron of legality while opening a window to the citizen.",
+  "diag": {
+   "k": "flow",
+   "d": "Weber ideal type → dysfunctions (Merton/Michels) → NPM revolt (Hood) → Neo-Weberian State (rule-of-law + citizen-orientation)"
+  },
+  "flash": [
+   "**Ideal type** = yardstick, not photograph",
+   "Cage closed via **success**: calculability, merit (*UPSC, Art 311*)",
+   "Dysfunctions: *Merton* **goal displacement**, *Michels* **oligarchy**",
+   "**NPM** (*Hood 1991*) attacked rules, fragmented accountability",
+   "**NWS** (*Pollitt & Bouckaert*): keep legality + add citizen-orientation — *Karmayogi*"
+  ]
+ },
+ "pubad1-7": {
+  "directive": "comment",
+  "lens": "✓ Imported from your verified answer bank (pa1-04, match 87%).",
+  "imported": true,
+  "intro": [
+   {
+    "t": "concept",
+    "x": "The New Public Service rejects the market analogy as the master model of government: administrators serve citizens who possess rights and collectively define the public interest."
+   }
+  ],
+  "body": [
+   {
+    "h": "Key dimensions",
+    "p": [
+     {
+      "x": "**Citizenship:** Denhardt and Denhardt replace steering and customer satisfaction with democratic citizenship and shared responsibility.",
+      "vf": "n"
+     },
+     {
+      "x": "**Public interest:** It is created through dialogue and contestation, not assumed to equal aggregated individual preferences.",
+      "vf": "n"
+     },
+     {
+      "x": "**Role of administrator:** Officials facilitate, negotiate and build capacity rather than merely command or contract out.",
+      "vf": "n"
+     },
+     {
+      "x": "**Accountability:** Multiple constitutional, legal, professional, community and political obligations outrank a single performance bottom line.",
+      "vf": "n"
+     },
+     {
+      "x": "**Human dignity:** People are co-authors and rights-bearers; inconvenient users cannot be discarded as unprofitable customers.",
+      "vf": "n"
+     },
+     {
+      "x": "**Administrative relevance:** Participatory planning, social audit, co-production and deliberative digital platforms express its logic.",
+      "vf": "n"
+     },
+     {
+      "x": "**Limits:** Dialogue can be slow, unequal voices can dominate and emergencies still require authoritative coordination.",
+      "vf": "n"
+     },
+     {
+      "x": "**NPM synthesis:** Service quality and measurement remain useful when subordinated to equity, due process and public purpose.",
+      "vf": "n"
+     },
+     {
+      "x": "**Capacity condition:** Participation without information, facilitation and responsive institutions becomes symbolic consultation.",
+      "vf": "n"
+     }
+    ]
+   }
+  ],
+  "conc": "The New Public Service restores democratic legitimacy to administration, but works best as a constitutional correction to—rather than wholesale rejection of—managerial competence.",
+  "flash": [
+   "New Public Service",
+   "Denhardt",
+   "citizen",
+   "public interest",
+   "serve rather than steer",
+   "co-production"
+  ]
+ },
+ "pubad1-13": {
+  "directive": "discuss",
+  "lens": "✓ Imported from your verified answer bank (pa1-08, match 80%).",
+  "imported": true,
+  "intro": [
+   {
+    "t": "concept",
+    "x": "Follett anticipated collaborative governance by treating conflict, authority and coordination as relational processes rather than fixed properties of hierarchy."
+   }
+  ],
+  "body": [
+   {
+    "h": "Key dimensions",
+    "p": [
+     {
+      "x": "**Law of situation:** Orders should arise from objective requirements jointly discovered, depersonalising command without denying expertise.",
+      "vf": "n"
+     },
+     {
+      "x": "**Integration:** Conflict should seek a new solution satisfying underlying interests rather than domination or splitting the difference.",
+      "vf": "n"
+     },
+     {
+      "x": "**Power-with:** Joint capacity is superior to power-over because participation enlarges rather than merely redistributes control.",
+      "vf": "n"
+     },
+     {
+      "x": "**Circular response:** Actors continuously shape one another; administration is interactive rather than a one-way chain of causation.",
+      "vf": "n"
+     },
+     {
+      "x": "**Coordination:** Direct contact, early coordination, reciprocal relations and continuity connect specialised units.",
+      "vf": "n"
+     },
+     {
+      "x": "**Group process:** Diversity becomes a creative resource when institutions enable genuine encounter and collective purpose.",
+      "vf": "n"
+     },
+     {
+      "x": "**Modern application:** Networks, co-production, interdepartmental teams and negotiated regulation operationalise her ideas.",
+      "vf": "n"
+     },
+     {
+      "x": "**Limits:** Integration may be impossible under deep power asymmetry, incompatible values or urgent coercive responsibility.",
+      "vf": "n"
+     },
+     {
+      "x": "**Safeguard:** Collaboration needs clear public authority, inclusive representation and transparent accountability to avoid insider capture.",
+      "vf": "n"
+     }
+    ]
+   }
+  ],
+  "conc": "Follett offers not soft consensus but a disciplined method of creating coordinated power; her relevance grows as government depends on actors it cannot simply command.",
+  "flash": [
+   "Follett",
+   "law of situation",
+   "integration",
+   "power-with",
+   "circular response",
+   "coordination"
+  ]
+ },
+ "pubad1-38": {
+  "directive": "critically examine",
+  "lens": "✓ Imported from your verified answer bank (pa1-23, match 73%).",
+  "imported": true,
+  "intro": [
+   {
+    "t": "concept",
+    "x": "The expansion of judicial and citizen oversight corrects executive dominance, but cannot replace the legislature as the continuous democratic principal of administration."
+   }
+  ],
+  "body": [
+   {
+    "h": "Key dimensions",
+    "p": [
+     {
+      "x": "**Legislative decline:** Fewer sittings, weak committee referral, guillotined grants and party discipline compress detailed scrutiny.",
+      "vf": "n"
+     },
+     {
+      "x": "**Executive asymmetry:** Government controls information, agenda and expertise, while individual legislators often lack research support.",
+      "vf": "n"
+     },
+     {
+      "x": "**Judicial expansion:** Courts enforce legality and rights and can remedy administrative inaction, but intervene episodically through cases.",
+      "vf": "n"
+     },
+     {
+      "x": "**Citizen control:** RTI, social audit, media and civil society supply dispersed information and continuous pressure.",
+      "vf": "n"
+     },
+     {
+      "x": "**Strength:** Multiple forums reduce monopoly, protect minorities and expose failures hidden from partisan legislatures.",
+      "vf": "n"
+     },
+     {
+      "x": "**Distortion risk:** Judicial management may lack operational competence; organised voices may not represent the least powerful.",
+      "vf": "n"
+     },
+     {
+      "x": "**Democratic deficit:** Neither judges nor NGOs authorise taxation, budgets or government tenure through electoral responsibility.",
+      "vf": "n"
+     },
+     {
+      "x": "**Reform:** Mandatory committee scrutiny, research staff, action-taken reporting and protected opposition time can revive legislative capacity.",
+      "vf": "n"
+     },
+     {
+      "x": "**Networked accountability:** Courts and citizens should feed evidence into, not displace, a strengthened representative chain.",
+      "vf": "n"
+     }
+    ]
+   }
+  ],
+  "conc": "Plural control strengthens accountability only when it is additive: legality and participation must reinforce the legislature's power of authorisation, finance and political responsibility.",
+  "flash": [
+   "legislative control",
+   "judicial review",
+   "citizen accountability",
+   "DRSC",
+   "power of purse",
+   "plural control"
+  ]
+ },
+ "pubad1-45": {
+  "directive": "examine",
+  "lens": "✓ Imported from your verified answer bank (pa1-24, match 80%).",
+  "imported": true,
+  "intro": [
+   {
+    "t": "concept",
+    "x": "Natural justice supplies the minimum procedural morality of administrative power, preventing convenience or delegated authority from becoming arbitrary condemnation."
+   }
+  ],
+  "body": [
+   {
+    "h": "Key dimensions",
+    "p": [
+     {
+      "x": "**Hearing rule:** Audi alteram partem requires notice, disclosure of material and a meaningful opportunity to answer.",
+      "vf": "n"
+     },
+     {
+      "x": "**Bias rule:** Nemo judex bars decision-makers with pecuniary, personal, departmental or reasonable apprehension of bias.",
+      "vf": "n"
+     },
+     {
+      "x": "**Reasoned decision:** Speaking orders demonstrate application of mind, enable appeal and discipline discretionary power.",
+      "vf": "n"
+     },
+     {
+      "x": "**Evolution:** The principles moved beyond courts to administrative decisions affecting rights, interests and legitimate expectations.",
+      "vf": "n"
+     },
+     {
+      "x": "**Flexibility:** Content varies with statute, urgency, subject matter, stakes and feasible safeguards; fairness is contextual.",
+      "vf": "n"
+     },
+     {
+      "x": "**Exceptions:** Emergency, confidentiality, impracticability or legislative action may modify prior hearing, but not create a blanket licence.",
+      "vf": "n"
+     },
+     {
+      "x": "**Post-decisional hearing:** It may cure urgent temporary action only when prompt, genuine review remains capable of correction.",
+      "vf": "n"
+     },
+     {
+      "x": "**No empty ritual:** Prejudice and useless-formality doctrines prevent automatic invalidation, yet authorities cannot presume hearing would never matter.",
+      "vf": "n"
+     },
+     {
+      "x": "**Digital administration:** Automated decisions require notice, intelligible reasons, data correction and human review.",
+      "vf": "n"
+     }
+    ]
+   }
+  ],
+  "conc": "Natural justice is unwritten not optional: its adaptable core ensures that administrative necessity remains bounded by participation, impartiality and reasons.",
+  "flash": [
+   "natural justice",
+   "audi alteram partem",
+   "nemo judex",
+   "speaking order",
+   "post-decisional hearing",
+   "fairness"
+  ]
+ }
 }

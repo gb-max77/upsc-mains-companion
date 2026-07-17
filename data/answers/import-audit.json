@@ -1,0 +1,55 @@
+{
+  "imported": 7,
+  "pending": 451,
+  "rows": [
+    {
+      "questionId": "pubad1-07",
+      "importedFrom": "pa1-04",
+      "matchScore": 0.866,
+      "question": "\"The New Public Service restores the citizen, not the customer, to the centre of administration.\" Comment.",
+      "sourceQuestion": "“The New Public Service restores the citizen, not the customer, to the centre of administration.” Examine its relevance to democratic governance."
+    },
+    {
+      "questionId": "pubad1-13",
+      "importedFrom": "pa1-08",
+      "matchScore": 0.8,
+      "question": "\"Mary Parker Follett's 'law of the situation' anticipated the logic of contemporary collaborative governance.\" Discuss.",
+      "sourceQuestion": "Mary Parker Follett's law of the situation, integration and power-with anticipated collaborative governance. Discuss."
+    },
+    {
+      "questionId": "pubad1-38",
+      "importedFrom": "pa1-23",
+      "matchScore": 0.731,
+      "question": "\"Legislative control over administration has weakened even as judicial and citizen control have strengthened.\" Critically examine.",
+      "sourceQuestion": "Legislative control over administration has weakened even as judicial and citizen control have expanded. Does this change strengthen or distort democratic accountability?"
+    },
+    {
+      "questionId": "pubad1-45",
+      "importedFrom": "pa1-24",
+      "matchScore": 0.798,
+      "question": "\"The principles of natural justice are the unwritten constitution of administrative adjudication.\" Examine.",
+      "sourceQuestion": "“The principles of natural justice are the unwritten constitution of administrative adjudication.” Explain their content, evolution and exceptions."
+    },
+    {
+      "questionId": "pubad2-04",
+      "importedFrom": "pa2-01",
+      "matchScore": 0.788,
+      "question": "\"Indianisation of the public services was conceded by the colonial State as a political necessity rather than embraced as an administrative conviction.\" Examine with reference to the Islington and Lee Commissions.",
+      "sourceQuestion": "Indianisation of the superior civil services was conceded by the colonial State as a political necessity rather than accepted as an administrative principle. Examine with reference to the Islington and Lee Commissions."
+    },
+    {
+      "questionId": "pubad2-50",
+      "importedFrom": "pa2-25",
+      "matchScore": 0.71,
+      "question": "\"The All India Services are the federal glue of Indian administration, yet the States increasingly experience them as instruments of the Union.\" Critically examine, with reference to recent cadre-deputation controversies.",
+      "sourceQuestion": "The All India Services function as federal glue, yet States often experience cadre management and deputation as instruments of Union influence. Critically examine."
+    },
+    {
+      "questionId": "pubad2-81",
+      "importedFrom": "pa2-45",
+      "matchScore": 0.723,
+      "question": "\"Police reform in India now runs on two tracks: judicially mandated structural reform and legislatively mandated procedural reform.\" Examine with reference to the Prakash Singh directives and the new criminal laws.",
+      "sourceQuestion": "Police reform now proceeds on two tracks: structural reforms mandated by *Prakash Singh* and procedural transformation under the new criminal laws. Examine the gaps between the two."
+    }
+  ]
+}

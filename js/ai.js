@@ -40,6 +40,36 @@ export async function callOpenAI(prompt) {
   return text;
 }
 
+// ---------- provider-agnostic completion (Bank on-demand generation) ----------
+// uses whichever key the user has saved: OpenAI → Gemini → Anthropic
+export function anyAIKey() { return openaiAvailable() || geminiAvailable() || aiAvailable(); }
+export async function aiComplete(prompt) {
+  if (openaiAvailable()) return callOpenAI(prompt);
+  if (geminiAvailable()) return callGemini(prompt);
+  if (aiAvailable()) return callClaudeText(prompt);
+  throw new Error('No AI key — add one in Library ▸ ⚙️ Settings');
+}
+
+async function callClaudeText(prompt) {
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': getApiKey(),
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({ model: MODEL, max_tokens: 4000, messages: [{ role: 'user', content: prompt }] }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${res.status}`);
+  }
+  const data = await res.json();
+  if (data.stop_reason === 'refusal') throw new Error('Model declined the request');
+  return (data.content || []).find(b => b.type === 'text')?.text || '';
+}
+
 // ---------- Gemini (model answers in the Answer drill) ----------
 export function geminiAvailable() { return !!localStorage.getItem('gemini-key'); }
 export function setGeminiKey(k) {
